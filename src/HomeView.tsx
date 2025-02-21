@@ -699,7 +699,8 @@ export function HomeView(): JSX.Element {
                   source={Body1}
                   style={{
                     width: screenWidth * 0.9,
-                    height: screenHeight * 0.58,
+                    height: screenHeight * 0.65,
+                    borderBottomLeftRadius: 16,
                     // backgroundColor: 'red',
                   }}
                   resizeMode="stretch">
@@ -2256,10 +2257,10 @@ const styles = StyleSheet.create({
     color: '#B8860B',
   },
   cardsContainer: {
-    height: '100%',
+    height: '95%',
     width: '100%',
     alignItems: 'center',
-    paddingVertical: screenHeight * 0.01,
+    paddingTop: screenHeight * 0.01,
     gap: screenHeight * 0.02,
   },
   row: {
