@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {
+  ActivityIndicator,
   Button,
   Dimensions,
   Image,
@@ -44,6 +45,11 @@ import Check from '../assets/images/iconCheck.svg';
 import Popup from '../assets/images/popup.png';
 import Sent from '../assets/images/sent.svg';
 import {launchCamera} from 'react-native-image-picker';
+import {ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD} from '@env';
+import {Totem} from '../types/entities';
+import {useNavigation} from '@react-navigation/native';
+import {StackNavigationProp} from '@react-navigation/stack';
+import {RootStackParamList} from '../types/navProps';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
@@ -58,6 +64,8 @@ export function HomeView(): JSX.Element {
   const [privacyLang, setPrivacyLang] = useState<LanguageType>('es');
   const [focused, setFocused] = useState(false);
   const [email, setEmail] = useState('');
+  const [data, setData] = useState<Totem | undefined>();
+  const [sendingImage, setSendingImage] = useState(false);
 
   const getMonth = (month: number, language: LanguageType) => {
     switch (language) {
@@ -207,6 +215,58 @@ export function HomeView(): JSX.Element {
     }
   };
 
+  const fetchData = async () => {
+    console.log('Fetching data');
+    try {
+      const authResponse = await fetch(`${ODOO_URL}/web/session/authenticate`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            db: ODOO_DB,
+            login: ODOO_USERNAME,
+            password: ODOO_PASSWORD,
+          },
+        }),
+      });
+      const authData = await authResponse.json();
+      if (!authData.result) {
+        throw new Error('Error de autenticación en Odoo');
+      }
+      const sessionId = authResponse.headers.get('set-cookie')?.split(';')[0];
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (sessionId) {
+        headers['Cookie'] = sessionId;
+      }
+      const response = await fetch(
+        `${ODOO_URL}/web/dataset/call_kw/notacool_gm.totem.sa_talaia/search_read`,
+        {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'call',
+            params: {
+              model: 'notacool_gm.totem.sa_talaia',
+              method: 'search_read',
+              args: [[]], // Puedes filtrar usuarios aquí si es necesario
+              kwargs: {}, // Campos que quieres obtener
+            },
+          }),
+        },
+      );
+
+      const data = await response.json();
+      setData(data.result[0]);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
+  };
+
   const onTakePhoto = () => {
     setStep(1);
     launchCamera({mediaType: 'photo', includeBase64: true}, response => {
@@ -235,8 +295,74 @@ export function HomeView(): JSX.Element {
   };
 
   useEffect(() => {
-    console.log(readPrivacy);
-  }, [readPrivacy]);
+    fetchData();
+  }, []);
+
+  const sendEmailOdoo = async () => {
+    setSendingImage(true);
+    try {
+      const imageBase64 = 'data:image/jpeg;base64,' + image64;
+      // 1️⃣ Crear el correo en Odoo
+      const createResponse = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: 'mail.mail',
+            method: 'create',
+            args: [
+              {
+                email_from: data?.mail || 'default@mail.com',
+                email_to: email || 'recipient@mail.com',
+                subject: 'Aquí tienes tu foto de recuerdo!',
+                body_html: `<img src="${imageBase64}" alt="Imagen de prueba" width="500px"/>`,
+              },
+            ],
+            kwargs: {},
+          },
+        }),
+      });
+
+      const createData = await createResponse.json();
+
+      if (!createData || !createData.result) {
+        throw new Error('❌ Odoo no devolvió un ID de correo');
+      }
+
+      const mailId = createData.result;
+
+      // 2️⃣ Enviar el correo
+      const sendResponse = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: 'mail.mail',
+            method: 'send',
+            args: [[mailId]], // Se envía el ID del correo creado
+            kwargs: {},
+          },
+        }),
+      }).then(response => {
+        setSendingImage(false);
+        setStep(2);
+      });
+    } catch (error) {
+      console.error('❌ Error al enviar correo:', error);
+    }
+  };
+
+  type NavigationProps = StackNavigationProp<RootStackParamList, 'Home'>;
+
+  const navigation = useNavigation<NavigationProps>();
+
+  const pressSend = () => {
+    sendEmailOdoo();
+  };
 
   return (
     <View style={styles.container}>
@@ -1497,7 +1623,12 @@ export function HomeView(): JSX.Element {
                             justifyContent: 'center',
                             alignItems: 'center',
                             gap: screenWidth * 0.01,
-                          }}>
+                          }}
+                          onPress={() =>
+                            navigation.navigate('WebView', {
+                              url: data?.web ? data.web : '',
+                            })
+                          }>
                           <Text
                             style={{
                               color: 'white',
@@ -1557,7 +1688,7 @@ export function HomeView(): JSX.Element {
         <View
           style={{
             backgroundColor: '#C7EEFF',
-            height: screenHeight * 0.765,
+            height: screenHeight * 0.9,
             paddingVertical: screenHeight * 0.02,
             alignItems: 'center',
             gap: screenHeight * 0.015,
@@ -1829,10 +1960,7 @@ export function HomeView(): JSX.Element {
                     placeholderTextColor="#90CAF9" // Light blue placeholder
                     keyboardType="email-address"
                   />
-                  <Pressable
-                    onPress={() => {
-                      setStep(2);
-                    }}>
+                  <TouchableOpacity onPress={pressSend}>
                     <View
                       style={{
                         height: screenHeight * 0.025,
@@ -1847,30 +1975,38 @@ export function HomeView(): JSX.Element {
                         flexDirection: 'row',
                         paddingHorizontal: screenWidth * 0.02,
                       }}>
-                      <Text
-                        style={{
-                          color: 'white',
-                          fontFamily: 'Poppins-Regular',
-                          fontSize: screenWidth * 0.02,
-                          lineHeight: screenHeight * 0.01,
-                        }}>
-                        Enviar.
-                      </Text>
-                      <Text
-                        style={{
-                          ...styles.infoSubtitleYellow,
-                          fontFamily: 'Poppins-Regular',
-                          fontSize: screenWidth * 0.02,
-                          lineHeight: screenHeight * 0.01,
-                          marginRight: screenWidth * 0.01,
-                        }}>
-                        Send
-                      </Text>
-                      <Next
-                        height={screenHeight * 0.04}
-                        width={screenWidth * 0.04}></Next>
+                      {sendingImage ? (
+                        <ActivityIndicator
+                          size="small"
+                          color="white"></ActivityIndicator>
+                      ) : (
+                        <>
+                          <Text
+                            style={{
+                              color: 'white',
+                              fontFamily: 'Poppins-Regular',
+                              fontSize: screenWidth * 0.02,
+                              lineHeight: screenHeight * 0.01,
+                            }}>
+                            Enviar.
+                          </Text>
+                          <Text
+                            style={{
+                              ...styles.infoSubtitleYellow,
+                              fontFamily: 'Poppins-Regular',
+                              fontSize: screenWidth * 0.02,
+                              lineHeight: screenHeight * 0.01,
+                              marginRight: screenWidth * 0.01,
+                            }}>
+                            Send
+                          </Text>
+                          <Next
+                            height={screenHeight * 0.04}
+                            width={screenWidth * 0.04}></Next>
+                        </>
+                      )}
                     </View>
-                  </Pressable>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -1937,35 +2073,7 @@ export function HomeView(): JSX.Element {
                       fontFamily: 'Poppins-Regular',
                       fontSize: screenWidth * 0.015,
                     }}>
-                    De conformidad a la disposición de la actual normativa de
-                    Protección de Datos de Carácter personal, informamos que el
-                    responsable del tratamiento de dos datos de carácter
-                    personal recogidos en este documento es NÓS SOLUCIÓNS, cuya
-                    finalidad es poder atender consultas y calquera tipo de
-                    xestión realizadas por este medio de comunicación. Os seus
-                    datos non se cederán a terceiros, salvo por obrigación
-                    legal.Si tiene derecho a acceder, rectificar o suprimir
-                    datos erróneos, solicite una limitación del tratamiento de
-                    sus datos así como opoñerse o retirar el consentimiento en
-                    calquera momento. Para eso, NÓS SOLUCIÓNS dispón de
-                    formularios específicos. Puede presentar su propia solicitud
-                    o solicitar nuestros formularios, siempre acompañados de una
-                    copia de su DNI para acreditar su identidad en: C/ Carcasía,
-                    38, 15200 - Noia (A Coruña); nossolucions@nossolucions.es
-                    Puede consultar a información adicional y detallada sobre
-                    Protección de Datos solicitándola por correo electrónico:
-                    nossolucions@nossolucions.es Ninguna parte de este documento
-                    puede ser reproducida, ni introducida en ningún sistema de
-                    recuperación, ni transmitida de ningún cheito, ni por ningún
-                    medio, la sexa electrónico, mecánico por fotocopia,
-                    grabación o doutro tipo, con ningún propósito, sin
-                    autorización por escrito del titular de este documento.
-                    respectivos propietarios. Esta mensaje, y no su caso,
-                    calquera fichero anexo al mes, puede contar información
-                    confidencial, sendo para uso exclusivo del destinatario,
-                    quedando prohibida la divulgación copia o distribución a
-                    terceros sin autorización expresa del remitente a la misma.
-                    borrado.
+                    {data?.privacy_text}
                   </Text>
                 ) : privacyLang == 'en' ? (
                   <Text
@@ -1974,33 +2082,7 @@ export function HomeView(): JSX.Element {
                       fontFamily: 'Poppins-Regular',
                       fontSize: screenWidth * 0.015,
                     }}>
-                    In accordance with the provisions of the current Personal
-                    Data Protection regulations, we inform you that the person
-                    responsible for the processing of two personal data
-                    collected in this document is NÓS SOLUCIÓNS, whose purpose
-                    is to be able to respond to queries and type of management
-                    made by this means of communication. Your data will not be
-                    transferred to third parties, except by legal obligation.If
-                    you have the right to access, rectify or delete erroneous
-                    data, request a limitation of the processing of your data as
-                    well as object or withdraw consent at any time. For this,
-                    NÓS SOLUCIÓNS has specific forms. You can submit your own
-                    application or request our forms, always accompanied by a
-                    copy of your ID to prove your identity at: C/ Carcasía, 38,
-                    15200 - Noia (A Coruña); nossolucions@nossolucions.esYou can
-                    consult additional and detailed information on Data
-                    Protection by requesting it by email:
-                    nossolucions@nossolucions.es No part of this document may be
-                    reproduced, introduced into any retrieval system, or
-                    transmitted in any way, or by any means, electronic,
-                    mechanical, photocopying, recording or otherwise, for any
-                    purpose, without written authorization from the owner of
-                    this document. respective owners.This message, and not its
-                    case, calquera file attached to the month, may contain
-                    confidential information, being for the exclusive use of the
-                    recipient, and disclosure, copy or distribution to third
-                    parties is prohibited without express authorization from the
-                    sender. erased.
+                    {data?.privacy_text_en}
                   </Text>
                 ) : (
                   <Text
@@ -2009,35 +2091,7 @@ export function HomeView(): JSX.Element {
                       fontFamily: 'Poppins-Regular',
                       fontSize: screenWidth * 0.015,
                     }}>
-                    De conformitat a la disposició de l'actual normativa de
-                    Protecció de Dades de Caràcter personal, informem que el
-                    responsable del tractament de dues dades de caràcter
-                    personal recollides en aquest document és NÓS SOLUCIÓNS, la
-                    finalitat de les quals és poder atendre consultes i calquera
-                    tipus de xestió realitzades per aquest mitjà de comunicació.
-                    Les vostres dades no se cediran a terceirs, excepte per
-                    abrigació legal.Si teniu dret a accedir, rectificar o
-                    suprimir dades errònies, sol·liciteu una limitació del
-                    tractament de les vostres dades així com oposar-vos o
-                    retirar el consentiment en calquera moment. Per això, NÓS
-                    SOLUCIÓNS disposa de formularis específics. Podeu presentar
-                    la vostra pròpia sol·licitud o sol·licitar els nostres
-                    formularis, sempre acompanyats d'una còpia del vostre DNI
-                    per acreditar la vostra identitat a: C/ Carcasía, 38, 15200
-                    - Noia (A Coruña); nossolucions@nossolucions.es Podeu
-                    consultar informació addicional i detallada sobre Protecció
-                    de Dades sol·licitant-la per correu electrònic:
-                    nossolucions@nossolucions.es Cap part d'aquest document no
-                    pot ser reproduïda, ni introduïda en cap sistema de
-                    recuperació, ni transmesa de cap cheito, ni per cap mitjà,
-                    la sexa electrònic, mecànic per fotocòpia, enregistrament o
-                    doutro tipus, amb cap propòsit, sense autorització per
-                    escrit del titular d'aquest document. Aquest missatge, i no
-                    escau, calquera fitxer annex al mes, pot comptar informació
-                    confidencial, sengle per a ús exclusiu del destinatari,
-                    quedant prohibida la divulgació còpia o distribució a
-                    tercers sense autorització expressa del remitent a la
-                    mateixa.
+                    {data?.privacy_text_ca}
                   </Text>
                 )}
               </ScrollView>
@@ -2153,6 +2207,7 @@ export function HomeView(): JSX.Element {
           </ImageBackground>
         </View>
       )}
+
       {/* Sección inferior: Pantalla de información */}
     </View>
   );
@@ -2257,7 +2312,7 @@ const styles = StyleSheet.create({
     color: '#B8860B',
   },
   cardsContainer: {
-    height: '95%',
+    height: '99%',
     width: '100%',
     alignItems: 'center',
     paddingTop: screenHeight * 0.01,
