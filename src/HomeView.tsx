@@ -50,6 +50,7 @@ import {Totem} from '../types/entities';
 import {useNavigation} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../types/navProps';
+import Paho from 'paho-mqtt';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
@@ -66,6 +67,9 @@ export function HomeView(): JSX.Element {
   const [email, setEmail] = useState('');
   const [data, setData] = useState<Totem | undefined>();
   const [sendingImage, setSendingImage] = useState(false);
+  const [messages, setMessages] = useState<
+    [] | undefined
+  >();
 
   const getMonth = (month: number, language: LanguageType) => {
     switch (language) {
@@ -216,7 +220,6 @@ export function HomeView(): JSX.Element {
   };
 
   const fetchData = async () => {
-    console.log('Fetching data');
     try {
       const authResponse = await fetch(`${ODOO_URL}/web/session/authenticate`, {
         method: 'POST',
@@ -259,10 +262,10 @@ export function HomeView(): JSX.Element {
           }),
         },
       );
-
       const data = await response.json();
       setData(data.result[0]);
     } catch (error) {
+      console.log(error);
       console.error('Error fetching data:', error);
     }
   };
@@ -363,6 +366,34 @@ export function HomeView(): JSX.Element {
   const pressSend = () => {
     sendEmailOdoo();
   };
+
+  const getMQTTData = async () => {
+    const client = new Paho.Client("mqtt-broker.notacoolcompany.com", 9001, "react-native-client");
+
+    client.connect({
+      userName: "meteoiot",
+      password: "Meteo2025!",
+      useSSL: false, // Cambia a `true` si el broker soporta `wss://`
+      onSuccess: () => {
+        client.subscribe("/test/message");
+      },
+      onFailure: (err) => {
+        console.error("❌ Error de conexión:", err);
+      },
+    });
+    
+    client.onMessageArrived = (message) => {
+      setMessages(JSON.parse(message.payloadString).measures);
+    };
+    
+    client.onConnectionLost = (responseObject) => {
+      console.error("🔴 Conexión perdida:", responseObject.errorMessage);
+    };
+  };
+
+  useEffect(() => {
+    getMQTTData();
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -1992,7 +2023,7 @@ export function HomeView(): JSX.Element {
                           </Text>
                           <Text
                             style={{
-                              ...styles.infoSubtitleYellow,
+                              color: '#EBC714',
                               fontFamily: 'Poppins-Regular',
                               fontSize: screenWidth * 0.02,
                               lineHeight: screenHeight * 0.01,
