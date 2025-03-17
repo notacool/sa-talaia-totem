@@ -27,15 +27,22 @@ import Body1 from '../assets/images/bg-body-2.png';
 import Body2 from '../assets/images/bg-body-3.png';
 import Location from '../assets/images/iconLocation.svg';
 import Temperature from '../assets/images/iconTemperature.svg';
+import TemperatureCold from '../assets/images/iconTemperatureCold.svg';
+import TemperatureHot from '../assets/images/iconTemperatureHot.svg';
 import Wind from '../assets/images/iconWind.svg';
 import Happy from '../assets/images/iconHappy.svg';
+import Sad from '../assets/images/iconSad.svg';
+import NeutralFace from '../assets/images/iconNeutralFace.svg';
 import CO2 from '../assets/images/iconCo2.svg';
+import CO2Bad from '../assets/images/iconCo2Bad.svg';
+import CO2Regular from '../assets/images/iconCo2Regular.svg';
 import Point from '../assets/images/iconPoint.svg';
 import Rainy from '../assets/images/iconRainy.svg';
 import RectangleSelfie from '../assets/images/iconRectangleSelfie.png';
 import TakeSelfie from '../assets/images/iconTakeSelfie.svg';
 import Next from '../assets/images/iconNext.svg';
 import UE from '../assets/images/UE.svg';
+import Mapa from '../assets/images/map.png';
 import Plan from '../assets/images/plan.svg';
 import Ministerio from '../assets/images/ministerio.svg';
 import Minilogo from '../assets/images/miniLogo.svg';
@@ -55,6 +62,12 @@ import Paho from 'paho-mqtt';
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
 
+type Data = {
+  n: string;
+  u: string;
+  v: number;
+};
+
 type LanguageType = 'es' | 'va' | 'en';
 export function HomeView(): JSX.Element {
   const [image, setImage] = useState<string | undefined>();
@@ -67,9 +80,126 @@ export function HomeView(): JSX.Element {
   const [email, setEmail] = useState('');
   const [data, setData] = useState<Totem | undefined>();
   const [sendingImage, setSendingImage] = useState(false);
-  const [messages, setMessages] = useState<
-    [] | undefined
-  >();
+  const [messages, setMessages] = useState<Data[]>();
+  const [airQualityValue, setAirQualityValue] = useState<number>();
+  const [airQuality, setAirQuality] = useState<string>();
+
+  const limits = {
+    CO: [
+      [0, 4.4, 50],
+      [4.5, 9.4, 100],
+      [9.5, 12.4, 150],
+      [12.5, 15.4, 200],
+      [15.5, 30.4, 300],
+      [30.5, 40.4, 400],
+      [40.5, 50.4, 500],
+    ],
+    SO2: [
+      [0, 35, 50],
+      [36, 75, 100],
+      [76, 185, 150],
+      [186, 304, 200],
+      [305, 604, 300],
+      [605, 804, 400],
+      [805, 1004, 500],
+    ],
+    NO2: [
+      [0, 53, 50],
+      [54, 100, 100],
+      [101, 360, 150],
+      [361, 649, 200],
+      [650, 1249, 300],
+      [1250, 1649, 400],
+      [1650, 2049, 500],
+    ],
+    O3: [
+      [0, 54, 50],
+      [55, 70, 100],
+      [71, 85, 150],
+      [86, 105, 200],
+      [106, 200, 300],
+      [201, 300, 400],
+      [301, 400, 500],
+    ],
+  };
+
+  const qualityLevels = [
+    [0, 50, 'Buena'],
+    [51, 100, 'Moderada'],
+    [101, 150, 'No saludable para grupos sensibles'],
+    [151, 200, 'No saludable'],
+    [201, 300, 'Muy no saludable'],
+    [301, Infinity, 'Peligroso'],
+  ];
+
+  function calculateICA(value: number | undefined, pollutant: any) {
+    if (value && value > 0) {
+      for (let [low, high, icaHigh] of limits[pollutant]) {
+        if (value >= low && value <= high) {
+          let icaLow =
+            low === 0 ? 0 : limits[pollutant].find(([l]) => l === low)[2];
+          return icaLow + ((icaHigh - icaLow) * (value - low)) / (high - low);
+        }
+      }
+      // Si está fuera del rango
+      return null;
+    } else {
+      return 0;
+    }
+  }
+
+  const getAirQuality = () => {
+    if (messages) {
+      const co =
+        messages.find(val => val.n === 'co') &&
+        (
+          Math.round(messages.find(val => val.n === 'co')?.v * 100) / 100
+        ).toFixed(2);
+      const so2 =
+        messages.find(val => val.n === 'so2') &&
+        (
+          Math.round(messages.find(val => val.n === 'so2')?.v * 100) /
+          100 /
+          1000
+        ).toFixed(2);
+      const o3 =
+        messages.find(val => val.n === 'o3') &&
+        (
+          Math.round(messages.find(val => val.n === 'o3')?.v * 100) /
+          100 /
+          1000
+        ).toFixed(2);
+      const no2 =
+        messages.find(val => val.n === 'no2') &&
+        (
+          Math.round(messages.find(val => val.n === 'no2')?.v * 100) /
+          100 /
+          1000
+        ).toFixed(2);
+      const vals = {
+        CO: Number(co) < 0 ? 0 : Number(co), // ppm
+        SO2: Number(so2) < 0 ? 0 : Number(so2), // ppb
+        NO2: Number(no2) < 0 ? 0 : Number(no2), // ppb
+        O3: Number(o3) < 0 ? 0 : Number(o3), //ppb
+      };
+      const icaValues = Object.fromEntries(
+        Object.entries(vals).map(([key, val]) => [key, calculateICA(val, key)]),
+      );
+      const icaFinal = Math.max(
+        ...Object.values(icaValues).filter(v => v !== null),
+      );
+      setAirQualityValue(
+        Object.values(vals)
+          .reduce((sum, val) => sum + val, 0)
+          .toFixed(2),
+      );
+      setAirQuality(
+        qualityLevels.find(
+          ([low, high]) => icaFinal >= low && icaFinal <= high,
+        )[2],
+      );
+    }
+  };
 
   const getMonth = (month: number, language: LanguageType) => {
     switch (language) {
@@ -368,26 +498,37 @@ export function HomeView(): JSX.Element {
   };
 
   const getMQTTData = async () => {
-    const client = new Paho.Client("mqtt-broker.notacoolcompany.com", 9001, "react-native-client");
+    const client = new Paho.Client(
+      'mqtt-broker.notacoolcompany.com',
+      9001,
+      'react-native-client',
+    );
 
     client.connect({
-      userName: "meteoiot",
-      password: "Meteo2025!",
+      userName: 'meteoiot',
+      password: 'Meteo2025!',
       useSSL: false, // Cambia a `true` si el broker soporta `wss://`
       onSuccess: () => {
-        client.subscribe("/test/message");
+        client.subscribe('/test/message');
       },
-      onFailure: (err) => {
-        console.error("❌ Error de conexión:", err);
+      onFailure: err => {
+        getMQTTData();
+        console.error('❌ Error de conexión:', err);
       },
     });
-    
-    client.onMessageArrived = (message) => {
-      setMessages(JSON.parse(message.payloadString).measures);
+
+    client.onMessageArrived = message => {
+      console.log(message)
+      if (
+        JSON.parse(message.payloadString).device_info.uuid ===
+        'a9591cf8-5058-3833-312e-3120ff0c2116'
+      ) {
+        setMessages(JSON.parse(message.payloadString).measures);
+      }
     };
-    
-    client.onConnectionLost = (responseObject) => {
-      console.error("🔴 Conexión perdida:", responseObject.errorMessage);
+
+    client.onConnectionLost = responseObject => {
+      getMQTTData();
     };
   };
 
@@ -395,7 +536,12 @@ export function HomeView(): JSX.Element {
     getMQTTData();
   }, []);
 
-  return (
+  useEffect(() => {
+    console.log(messages)
+    getAirQuality();
+  }, [messages]);
+
+  return messages && messages?.length > 0 ? (
     <View style={styles.container}>
       {/* SVG de fondo arriba */}
       {/* <View style={styles.headerContainer}>
@@ -823,32 +969,6 @@ export function HomeView(): JSX.Element {
                           {new Date().getFullYear()}
                         </Text>
                       </View>
-                      {/* <View
-                    style={{
-                      backgroundColor: 'white',
-                      marginHorizontal: screenWidth * 0.05,
-                      marginTop: screenHeight * 0.01,
-                      paddingVertical: screenHeight * 0.005,
-                      // paddingRight: screenWidth * 0.015,
-                      borderRadius: 100,
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      alignSelf: 'flex-start',
-                    }}>
-                    <Text style={{fontSize: screenWidth * 0.015}}>
-                      Sant Josep de sa Talaia. Ibiza
-                    </Text>
-                    <Location
-                      height="100%"
-                      width="4%"
-                      // preserveAspectRatio="none"
-                      style={{
-                        flexShrink: 1,
-                        width: screenWidth * 0.02,
-                      }}></Location>
-                  </View>
-                  <Text>HOLA</Text> */}
                     </View>
                   </ImageBackground>
                 </View>
@@ -918,26 +1038,63 @@ export function HomeView(): JSX.Element {
                         </View>
                         <View
                           style={{
-                            height: '42.5%',
+                            height: '25%',
                             flexDirection: 'row',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}>
-                          <Temperature height="75%" width="30%"></Temperature>
+                          {messages &&
+                          messages.find(val => val.n === 'temp') &&
+                          Number(
+                            (
+                              Math.round(
+                                messages.find(val => val.n === 'temp')?.v * 10,
+                              ) / 10
+                            ).toFixed(1),
+                          ) < 20 ? (
+                            <TemperatureCold
+                              height="75%"
+                              width="30%"></TemperatureCold>
+                          ) : messages &&
+                            messages.find(val => val.n === 'temp') &&
+                            Number(
+                              (
+                                Math.round(
+                                  messages.find(val => val.n === 'temp')?.v *
+                                    10,
+                                ) / 10
+                              ).toFixed(1),
+                            ) < 30 ? (
+                            <Temperature height="85%" width="40%"></Temperature>
+                          ) : (
+                            <TemperatureHot
+                              height="75%"
+                              width="30%"></TemperatureHot>
+                          )}
+
                           <View
                             style={{
                               display: 'flex',
                               flexDirection: 'row',
                               justifyContent: 'center',
                               alignItems: 'center',
+
+                              paddingTop: '5%',
                             }}>
                             <Text
                               style={{
                                 fontSize: screenWidth * 0.075,
                                 fontFamily: 'Poppins-SemiBold',
                               }}>
-                              23
+                              {messages &&
+                                messages.find(val => val.n === 'temp') &&
+                                (
+                                  Math.round(
+                                    messages.find(val => val.n === 'temp')?.v *
+                                      10,
+                                  ) / 10
+                                ).toFixed(1)}
                             </Text>
                             <Text
                               style={{
@@ -951,76 +1108,177 @@ export function HomeView(): JSX.Element {
                         <View
                           style={{
                             display: 'flex',
-                            flexDirection: 'row',
-                            height: '12.5%',
-                            // backgroundColor: 'red',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: screenWidth * 0.01,
-                          }}>
-                          <Point height="40%"></Point>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            El tiempo hoy
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            El temps avui
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleYellow,
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Today's weather
-                          </Text>
-                          <Point height="40%"></Point>
-                        </View>
-                        <View
-                          style={{
-                            height: '15%',
-                            backgroundColor: 'rgba(255,255,255,0.6)',
+                            flexDirection: 'column',
+                            gap: '5%',
                             width: '95%',
-                            borderRadius: 16,
-                            display: 'flex',
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: screenWidth * 0.005,
+                            height: '20%',
                           }}>
-                          <Rainy width="10%" height="80%"></Rainy>
-                          <Text
+                          <View
                             style={{
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '1%',
                             }}>
-                            Soleado
-                          </Text>
-                          <Text
+                            <View
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                // backgroundColor: 'red',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.01,
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Humedad
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleRed,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Humitat
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleYellow,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Humidity
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                height: '60%',
+                                backgroundColor: 'rgba(255,255,255,0.6)',
+                                width: '95%',
+                                borderRadius: 16,
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.005,
+                                marginTop: '1%',
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.01,
+                                }}>
+                                {messages &&
+                                  messages.find(val => val.n === 'hum') &&
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'hum')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1)}{' '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.01,
+                                  }}>
+                                  %
+                                </Text>
+                              </Text>
+                            </View>
+                          </View>
+                          <View
                             style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '1%',
                             }}>
-                            Assolellat
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleYellow,
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
-                            }}>
-                            Sunny
-                          </Text>
+                            <View
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                // backgroundColor: 'red',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.01,
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Presión atmosférica
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleRed,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Pressió atmosfèrica
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleYellow,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Atmospheric pressure
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                height: '60%',
+                                backgroundColor: 'rgba(255,255,255,0.6)',
+                                width: '95%',
+                                borderRadius: 16,
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.005,
+                                marginTop: '1%',
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.01,
+                                }}>
+                                {messages &&
+                                  messages.find(val => val.n === 'prb') &&
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'prb')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1)}
+                                {'  '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.01,
+                                  }}>
+                                  hPA
+                                </Text>
+                              </Text>
+                            </View>
+                          </View>
                         </View>
+                        <ImageBackground
+                          source={Mapa}
+                          style={{
+                            height: '50%',
+                            width: '90%',
+                            marginTop: '25%',
+                            marginLeft: '12.5%',
+                          }}
+                          resizeMode="stretch"
+                        />
                       </View>
                       <View style={styles.card}>
                         <View
@@ -1033,12 +1291,12 @@ export function HomeView(): JSX.Element {
                           <Text
                             style={{
                               fontSize: screenWidth * 0.02,
-                              textAlign: 'center',
-                              paddingVertical: screenHeight * 0.003,
                               fontFamily: 'Poppins-Bold',
                               lineHeight: screenWidth * 0.025,
+                              textAlign: 'center',
+                              paddingVertical: screenHeight * 0.003,
                             }}>
-                            VELOCIDAD DEL VIENTO
+                            CALIDAD DEL AIRE
                           </Text>
                         </View>
                         <View
@@ -1060,7 +1318,7 @@ export function HomeView(): JSX.Element {
                                 textAlign: 'center',
                                 paddingVertical: screenHeight * 0.003,
                               }}>
-                              Velocitat del vent ·
+                              Qualitat de l'aire ·
                             </Text>
                             <Text
                               style={{
@@ -1070,130 +1328,471 @@ export function HomeView(): JSX.Element {
                                 textAlign: 'center',
                                 paddingVertical: screenHeight * 0.003,
                               }}>
-                              Wind speed
+                              Air quality
                             </Text>
                           </View>
                         </View>
+
                         <View
                           style={{
-                            height: '42.5%',
+                            height: '25%',
                             flexDirection: 'row',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}>
-                          <Wind height="75%" width="30%"></Wind>
+                          {airQuality === 'Buena' ? (
+                            <CO2 height="75%" width="30%"></CO2>
+                          ) : airQuality === 'Moderada' ? (
+                            <CO2Regular height="75%" width="30%" />
+                          ) : (
+                            <CO2Bad height="75%" width="30%" />
+                          )}
+
                           <View
                             style={{
                               display: 'flex',
                               flexDirection: 'row',
                               justifyContent: 'center',
                               alignItems: 'center',
+                              paddingTop: '5%',
                             }}>
                             <Text
                               style={{
                                 fontSize: screenWidth * 0.075,
                                 fontFamily: 'Poppins-SemiBold',
                               }}>
-                              57
+                              {airQualityValue}
                             </Text>
                             <Text
                               style={{
                                 fontSize: screenWidth * 0.02,
                                 fontFamily: 'Poppins-Regular',
                               }}>
-                              Km./h.
+                              ppm.
                             </Text>
                           </View>
                         </View>
                         <View
                           style={{
                             display: 'flex',
-                            flexDirection: 'row',
-                            height: '12.5%',
-                            // backgroundColor: 'red',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: screenWidth * 0.01,
-                          }}>
-                          <Point height="40%"></Point>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Dirección del viento
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Direcció del vent
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleYellow,
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Wind direction
-                          </Text>
-                          <Point height="40%"></Point>
-                        </View>
-                        <View
-                          style={{
-                            height: '15%',
-                            backgroundColor: 'rgba(255,255,255,0.6)',
+                            flexDirection: 'column',
+                            gap: '3%',
                             width: '95%',
-                            borderRadius: 16,
-                            display: 'flex',
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: screenWidth * 0.005,
+                            height: '20%',
                           }}>
-                          {/* <Rainy width="10%" height="50%"></Rainy> */}
-                          <Text
+                          <View
                             style={{
-                              fontSize: screenWidth * 0.02,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '1%',
                             }}>
-                            NE
-                          </Text>
-                          <Text
+                            <View
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                // backgroundColor: 'red',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.01,
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                M. de carbono / Ozono
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleRed,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                M. de carboni / Ozó
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleYellow,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Carbon monoxide / Ozone
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                height: '60%',
+                                backgroundColor: 'rgba(255,255,255,0.6)',
+                                width: '95%',
+                                borderRadius: 16,
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.005,
+                                marginTop: '1%',
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.015,
+                                }}>
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  CO:{' '}
+                                </Text>
+                                {messages &&
+                                  messages.find(val => val.n === 'co') &&
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'co')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1)}{' '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  ppm
+                                </Text>
+                              </Text>
+                              <View
+                                style={{
+                                  width: '1%',
+                                  backgroundColor: '#BFC7D1',
+                                  height: '50%',
+                                }}></View>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.015,
+                                }}>
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  O3:{' '}
+                                </Text>
+                                {messages &&
+                                  messages.find(val => val.n === 'o3') &&
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'o3')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1)}{' '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.01,
+                                  }}>
+                                  ppb
+                                </Text>
+                              </Text>
+                            </View>
+                          </View>
+                          <View
                             style={{
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '1%',
                             }}>
-                            Noroeste
-                          </Text>
-                          <Text
+                            <View
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                // backgroundColor: 'red',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.01,
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Presión atmosférica
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleRed,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Pressió atmosfèrica
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleYellow,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Atmospheric pressure
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                height: '60%',
+                                backgroundColor: 'rgba(255,255,255,0.6)',
+                                width: '95%',
+                                borderRadius: 16,
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.005,
+                                marginTop: '1%',
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.015,
+                                }}>
+                                {messages &&
+                                  messages.find(val => val.n === 'prb') &&
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'prb')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1)}
+                                {'  '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  hPA
+                                </Text>
+                              </Text>
+                            </View>
+                          </View>
+                          <View
                             style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '1%',
                             }}>
-                            Nord-est
-                          </Text>
-                          <Text
+                            <View
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                // backgroundColor: 'red',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.01,
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Partículas gruesas
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleRed,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Partícules gruixudes
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleYellow,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Coarse particles
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                height: '60%',
+                                backgroundColor: 'rgba(255,255,255,0.6)',
+                                width: '95%',
+                                borderRadius: 16,
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.005,
+                                marginTop: '1%',
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.015,
+                                }}>
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  PM10:{' '}
+                                </Text>
+                                {messages &&
+                                  messages.find(val => val.n === 'pm10') &&
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'pm10')
+                                        ?.v * 10,
+                                    ) / 10
+                                  ).toFixed(1)}
+                                {'  '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                  }}>
+                                  µg/m3
+                                </Text>
+                              </Text>
+                            </View>
+                          </View>
+                          <View
                             style={{
-                              ...styles.infoSubtitleYellow,
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '1%',
                             }}>
-                            Northeast
-                          </Text>
+                            <View
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                // backgroundColor: 'red',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.01,
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Part. finas e inhalables
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleRed,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Part. fines i inhalables
+                              </Text>
+                              <Text
+                                style={{
+                                  ...styles.infoSubtitleYellow,
+                                  fontSize: screenWidth * 0.01,
+                                  fontFamily: 'Poppins-Bold',
+                                }}>
+                                Fine and inhalable part.
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                height: '60%',
+                                backgroundColor: 'rgba(255,255,255,0.6)',
+                                width: '95%',
+                                borderRadius: 16,
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: screenWidth * 0.005,
+                                marginTop: '1%',
+                              }}>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.015,
+                                }}>
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  PM2.5:{' '}
+                                </Text>
+                                {messages &&
+                                  messages.find(val => val.n === 'pm2.5') &&
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'pm2.5')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1)}{' '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  µg/m3
+                                </Text>
+                              </Text>
+                              <View
+                                style={{
+                                  width: '1%',
+                                  backgroundColor: '#BFC7D1',
+                                  height: '50%',
+                                }}></View>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.015,
+                                }}>
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  PM1:{' '}
+                                </Text>
+                                {messages &&
+                                  messages.find(val => val.n === 'pm1') &&
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'pm1')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1)}{' '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.01,
+                                  }}>
+                                  µg/m3
+                                </Text>
+                              </Text>
+                            </View>
+                          </View>
                         </View>
                       </View>
                     </View>
-                    <View style={styles.row}>
-                      <View style={styles.card}>
+                    {/* <View style={styles.row}> */}
+                    {/*<View style={styles.card}>
                         <View
                           style={{
                             backgroundColor: 'white',
@@ -1253,7 +1852,13 @@ export function HomeView(): JSX.Element {
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}>
-                          <CO2 height="75%" width="30%"></CO2>
+                          {airQuality === 'Buena' ? (
+                            <CO2 height="75%" width="30%"></CO2>
+                          ) : airQuality === 'Moderada' ? (
+                            <CO2Regular height="75%" width="30%" />
+                          ) : (
+                            <CO2Bad height="75%" width="30%" />
+                          )}
                           <View
                             style={{
                               display: 'flex',
@@ -1266,7 +1871,7 @@ export function HomeView(): JSX.Element {
                                 fontSize: screenWidth * 0.075,
                                 fontFamily: 'Poppins-SemiBold',
                               }}>
-                              438
+                              {airQualityValue}
                             </Text>
                             <Text
                               style={{
@@ -1325,14 +1930,21 @@ export function HomeView(): JSX.Element {
                             justifyContent: 'center',
                             gap: screenWidth * 0.005,
                           }}>
-                          {/* <Rainy width="10%" height="50%"></Rainy> */}
+                          //<Rainy width="10%" height="50%"></Rainy>
                           <Text
                             style={{
                               fontSize: screenWidth * 0.02,
                               fontFamily: 'Poppins-Medium',
                               lineHeight: screenHeight * 0.01,
                             }}>
-                            90%
+                            {messages &&
+                              messages.find(val => val.n === 'hum') &&
+                              (
+                                Math.round(
+                                  messages.find(val => val.n === 'hum')?.v * 10,
+                                ) / 10
+                              ).toFixed(1)}
+                            %
                           </Text>
                           <Text
                             style={{
@@ -1362,8 +1974,8 @@ export function HomeView(): JSX.Element {
                             Humidity
                           </Text>
                         </View>
-                      </View>
-                      <View style={styles.card}>
+                      </View>*/}
+                    {/* <View style={styles.card}>
                         <View
                           style={{
                             backgroundColor: 'white',
@@ -1436,7 +2048,14 @@ export function HomeView(): JSX.Element {
                                 fontSize: screenWidth * 0.075,
                                 fontFamily: 'Poppins-SemiBold',
                               }}>
-                              19
+                              {messages &&
+                                messages.find(val => val.n === 'pm2.5') &&
+                                (
+                                  Math.round(
+                                    messages.find(val => val.n === 'pm2.5')?.v *
+                                      10,
+                                  ) / 10
+                                ).toFixed(1)}
                             </Text>
                             <Text
                               style={{
@@ -1495,7 +2114,7 @@ export function HomeView(): JSX.Element {
                             justifyContent: 'center',
                             gap: screenWidth * 0.005,
                           }}>
-                          {/* <Rainy width="10%" height="50%"></Rainy> */}
+                          // <Rainy width="10%" height="50%"></Rainy> 
                           <Text
                             style={{
                               fontSize: screenWidth * 0.02,
@@ -1531,8 +2150,8 @@ export function HomeView(): JSX.Element {
                             Optimal level
                           </Text>
                         </View>
-                      </View>
-                    </View>
+                      </View> */}
+                    {/* </View> */}
                     <View style={styles.selfieCard}>
                       <View
                         style={{
@@ -2241,6 +2860,8 @@ export function HomeView(): JSX.Element {
 
       {/* Sección inferior: Pantalla de información */}
     </View>
+  ) : (
+    <View style={styles.container}></View>
   );
 }
 
@@ -2355,7 +2976,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: screenWidth * 0.05,
     width: screenWidth * 0.9,
-    height: '27.5%',
+    height: '55%',
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.6)',
@@ -2381,7 +3002,6 @@ const styles = StyleSheet.create({
   cardValue: {
     fontSize: 30,
     fontWeight: 'bold',
-    marginTop: 10,
   },
   icon: {
     width: 50,
