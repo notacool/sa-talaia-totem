@@ -52,7 +52,7 @@ import Check from '../assets/images/iconCheck.svg';
 import Popup from '../assets/images/popup.png';
 import Sent from '../assets/images/sent.svg';
 import {launchCamera} from 'react-native-image-picker';
-import {ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD} from '@env';
+import {ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD, TOTEM_ID_LAST_DIGITS} from '@env';
 import {Totem} from '../types/entities';
 import {useNavigation} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
@@ -365,6 +365,7 @@ export function HomeView(): JSX.Element {
         }),
       });
       const authData = await authResponse.json();
+      console.log(authData)
       if (!authData.result) {
         throw new Error('Error de autenticación en Odoo');
       }
@@ -460,6 +461,8 @@ export function HomeView(): JSX.Element {
 
       const createData = await createResponse.json();
 
+      console.log(createData)
+
       if (!createData || !createData.result) {
         throw new Error('❌ Odoo no devolvió un ID de correo');
       }
@@ -481,6 +484,7 @@ export function HomeView(): JSX.Element {
           },
         }),
       }).then(response => {
+        console.log(response)
         setSendingImage(false);
         setStep(2);
       });
@@ -518,10 +522,11 @@ export function HomeView(): JSX.Element {
     });
 
     client.onMessageArrived = message => {
-      console.log(message)
+      console.log(message);
+      console.log(TOTEM_ID_LAST_DIGITS)
       if (
-        JSON.parse(message.payloadString).device_info.uuid ===
-        'a9591cf8-5058-3833-312e-3120ff0c2116'
+        JSON.parse(message.payloadString).device_info.uuid.slice(-4) ===
+        TOTEM_ID_LAST_DIGITS
       ) {
         setMessages(JSON.parse(message.payloadString).measures);
       }
@@ -537,11 +542,11 @@ export function HomeView(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    console.log(messages)
+    console.log(messages);
     getAirQuality();
   }, [messages]);
 
-  return messages && messages?.length > 0 ? (
+  return (
     <View style={styles.container}>
       {/* SVG de fondo arriba */}
       {/* <View style={styles.headerContainer}>
@@ -1448,13 +1453,14 @@ export function HomeView(): JSX.Element {
                                   CO:{' '}
                                 </Text>
                                 {messages &&
-                                  messages.find(val => val.n === 'co') &&
+                                  messages.find(val => val.n === 'co') && 
+                                    messages.find(val => val.n === 'co')?.v > 0 ?
                                   (
                                     Math.round(
                                       messages.find(val => val.n === 'co')?.v *
                                         10,
                                     ) / 10
-                                  ).toFixed(1)}{' '}
+                                  ).toFixed(1): 0}{' '}
                                 <Text
                                   style={{
                                     fontSize: screenWidth * 0.015,
@@ -1485,13 +1491,13 @@ export function HomeView(): JSX.Element {
                                   O3:{' '}
                                 </Text>
                                 {messages &&
-                                  messages.find(val => val.n === 'o3') &&
+                                  messages.find(val => val.n === 'o3') && messages.find(val => val.n === 'o3')?.v > 0 ?
                                   (
                                     Math.round(
                                       messages.find(val => val.n === 'o3')?.v *
                                         10,
                                     ) / 10
-                                  ).toFixed(1)}{' '}
+                                  ).toFixed(1): 0}{' '}
                                 <Text
                                   style={{
                                     fontSize: screenWidth * 0.015,
@@ -1523,7 +1529,7 @@ export function HomeView(): JSX.Element {
                                   fontSize: screenWidth * 0.01,
                                   fontFamily: 'Poppins-Bold',
                                 }}>
-                                Presión atmosférica
+                                D. de nitrógeno y azufre
                               </Text>
                               <Text
                                 style={{
@@ -1531,7 +1537,7 @@ export function HomeView(): JSX.Element {
                                   fontSize: screenWidth * 0.01,
                                   fontFamily: 'Poppins-Bold',
                                 }}>
-                                Pressió atmosfèrica
+                                D. de nitrogen i sofre
                               </Text>
                               <Text
                                 style={{
@@ -1539,7 +1545,7 @@ export function HomeView(): JSX.Element {
                                   fontSize: screenWidth * 0.01,
                                   fontFamily: 'Poppins-Bold',
                                 }}>
-                                Atmospheric pressure
+                                Nitrogen dioxide / Sulfur
                               </Text>
                             </View>
                             <View
@@ -1561,22 +1567,66 @@ export function HomeView(): JSX.Element {
                                   fontFamily: 'Poppins-Bold',
                                   lineHeight: screenHeight * 0.015,
                                 }}>
-                                {messages &&
-                                  messages.find(val => val.n === 'prb') &&
-                                  (
-                                    Math.round(
-                                      messages.find(val => val.n === 'prb')?.v *
-                                        10,
-                                    ) / 10
-                                  ).toFixed(1)}
-                                {'  '}
                                 <Text
                                   style={{
                                     fontSize: screenWidth * 0.015,
                                     fontFamily: 'Poppins-Regular',
                                     lineHeight: screenHeight * 0.015,
                                   }}>
-                                  hPA
+                                  NO2:{' '}
+                                </Text>
+                                {messages &&
+                                  messages.find(val => val.n === 'no2') && messages.find(val => val.n === 'no2')?.v > 0 ?
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'no2')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1): 0}{' '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  ppm
+                                </Text>
+                              </Text>
+                              <View
+                                style={{
+                                  width: '1%',
+                                  backgroundColor: '#BFC7D1',
+                                  height: '50%',
+                                }}></View>
+                              <Text
+                                style={{
+                                  fontSize: screenWidth * 0.02,
+                                  fontFamily: 'Poppins-Bold',
+                                  lineHeight: screenHeight * 0.015,
+                                }}>
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.015,
+                                  }}>
+                                  SO2:{' '}
+                                </Text>
+                                {messages &&
+                                  messages.find(val => val.n === 'so2') && messages.find(val => val.n === 'so2')?.v > 0 ?
+                                  (
+                                    Math.round(
+                                      messages.find(val => val.n === 'so2')?.v *
+                                        10,
+                                    ) / 10
+                                  ).toFixed(1): 0}{' '}
+                                <Text
+                                  style={{
+                                    fontSize: screenWidth * 0.015,
+                                    fontFamily: 'Poppins-Regular',
+                                    lineHeight: screenHeight * 0.01,
+                                  }}>
+                                  ppb
                                 </Text>
                               </Text>
                             </View>
@@ -1736,8 +1786,8 @@ export function HomeView(): JSX.Element {
                                   messages.find(val => val.n === 'pm2.5') &&
                                   (
                                     Math.round(
-                                      messages.find(val => val.n === 'pm2.5')?.v *
-                                        10,
+                                      messages.find(val => val.n === 'pm2.5')
+                                        ?.v * 10,
                                     ) / 10
                                   ).toFixed(1)}{' '}
                                 <Text
@@ -2860,8 +2910,6 @@ export function HomeView(): JSX.Element {
 
       {/* Sección inferior: Pantalla de información */}
     </View>
-  ) : (
-    <View style={styles.container}></View>
   );
 }
 

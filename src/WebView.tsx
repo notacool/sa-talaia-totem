@@ -47,7 +47,7 @@ const WebViewScreen = () => {
       setTimeout(() => {
         console.log('User inactive, navigating to Home...');
         navigation.navigate('Home');
-      }, 30000), // 30 seconds timeout
+      }, 60000), // 30 seconds timeout
     );
   };
 
@@ -239,11 +239,14 @@ const WebViewScreen = () => {
               </Text> */}
           </View>
         </ImageBackground>
-        {loading && (
+        {loading ? (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color="#006EA0" />
-          </View>
-        )}
+          </View> 
+        ): <View style={{...styles.loaderContainer, marginTop: screenHeight * 0.01}}><Text style={{
+          fontSize: screenWidth * 0.025,
+          fontFamily: 'Poppins-Regular',
+        }}>Inicio</Text></View>}
         <WebView
           source={{uri: url}}
           onLoadStart={() => setLoading(true)} // Show loader when WebView starts loading
