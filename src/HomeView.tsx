@@ -44,6 +44,7 @@ import Plan from '../assets/images/plan.svg';
 import Ministerio from '../assets/images/ministerio.svg';
 import Minilogo from '../assets/images/miniLogo.svg';
 import Back from '../assets/images/iconBack.svg';
+import Photo from '../assets/images/iconPhoto.svg';
 import Close from '../assets/images/iconClose.svg';
 import Check from '../assets/images/iconCheck.svg';
 import Popup from '../assets/images/popup.png';
@@ -96,6 +97,8 @@ export function HomeView(): JSX.Element {
   const devices = useCameraDevices();
   const device = devices.find(cam => cam.position === 'front');
   const cameraRef = useRef<Camera>(null);
+  const [countdown, setCountdown] = useState(0);
+  const [isCounting, setIsCounting] = useState(false);
 
   useEffect(() => {
     const getPermission = async () => {
@@ -426,6 +429,24 @@ export function HomeView(): JSX.Element {
     }
   };
 
+  const handleTakePhoto = () => {
+    if (isCounting) return;
+
+    setIsCounting(true);
+    setCountdown(10);
+
+    let seconds = 10;
+    const interval = setInterval(() => {
+      seconds -= 1;
+      setCountdown(seconds);
+
+      if (seconds <= 0) {
+        clearInterval(interval);
+        setIsCounting(false);
+        onTakePhoto(); // 👈 tu función original
+      }
+    }, 1000);
+  };
   const onTakePhoto = async () => {
     if (cameraRef.current == null) return;
 
@@ -478,41 +499,44 @@ export function HomeView(): JSX.Element {
     setSendingImage(true);
     try {
       // 🔹 Paso 1: crear el attachment en Odoo
-      const attachmentResponse = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'call',
-          params: {
-            model: 'ir.attachment',
-            method: 'create',
-            args: [
-              {
-                name: 'foto_recuerdo.jpg',
-                type: 'binary',
-                datas: image64, // 👈 solo el base64, sin "data:image/jpeg;base64,"
-                res_model: 'mail.mail',
-                res_id: 0,
-                mimetype: 'image/jpeg',
-              },
-            ],
-            kwargs: {},
-          },
-        }),
-      });
-  
+      const attachmentResponse = await fetch(
+        `${ODOO_URL}/web/dataset/call_kw`,
+        {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'call',
+            params: {
+              model: 'ir.attachment',
+              method: 'create',
+              args: [
+                {
+                  name: 'foto_recuerdo.jpg',
+                  type: 'binary',
+                  datas: image64, // 👈 solo el base64, sin "data:image/jpeg;base64,"
+                  res_model: 'mail.mail',
+                  res_id: 0,
+                  mimetype: 'image/jpeg',
+                },
+              ],
+              kwargs: {},
+            },
+          }),
+        },
+      );
+
       const attachmentData = await attachmentResponse.json();
       const attachmentId = attachmentData.result;
-  
+
       if (!attachmentId) {
         throw new Error('❌ No se pudo crear el attachment');
       }
-  
+
       // 🔹 Paso 2: crear el correo con el attachment
       const createResponse = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           jsonrpc: '2.0',
           method: 'call',
@@ -524,7 +548,8 @@ export function HomeView(): JSX.Element {
                 email_from: data?.mail || 'default@mail.com',
                 email_to: email || 'destinatario@mail.com',
                 subject: 'Aquí tienes tu foto de recuerdo!',
-                body_html: 'Te adjuntamos la foto que te has sacado de recuerdo!',
+                body_html:
+                  'Te adjuntamos la foto que te has sacado de recuerdo!',
                 attachment_ids: [[6, false, [attachmentId]]],
               },
             ],
@@ -532,18 +557,18 @@ export function HomeView(): JSX.Element {
           },
         }),
       });
-  
+
       const createData = await createResponse.json();
       const mailId = createData.result;
-  
+
       if (!mailId) {
         throw new Error('❌ No se pudo crear el correo en Odoo');
       }
-  
+
       // 🔹 Paso 3: enviar el correo
       await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           jsonrpc: '2.0',
           method: 'call',
@@ -555,7 +580,7 @@ export function HomeView(): JSX.Element {
           },
         }),
       });
-  
+
       // ✅ Éxito
       setSendingImage(false);
       setAccepted(false);
@@ -565,7 +590,6 @@ export function HomeView(): JSX.Element {
       setSendingImage(false);
     }
   };
-  
 
   type NavigationProps = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -2108,19 +2132,46 @@ export function HomeView(): JSX.Element {
             isActive={true}
             photo={true}
           />
-          <View>
-            <Button title="📸 Sacar Foto" onPress={onTakePhoto} />
+          <View
+            style={{
+              width: '100%',
+              alignItems: 'center',
+              display: 'flex',
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: screenWidth * 0.05,
+            }}>
+            <TouchableOpacity onPress={handleTakePhoto} disabled={isCounting}>
+              <Photo
+                height={screenHeight * 0.055}
+                width={screenWidth * 0.4}></Photo>
+            </TouchableOpacity>
+            {isCounting && (
+              <Text
+              style={{
+                marginTop: screenHeight * 0.01,
+                fontSize: screenWidth * 0.05,
+                color: '#006EA0',
+                fontFamily: 'Poppins-Bold',
+              }}>
+                {countdown}
+              </Text>
+            )}
           </View>
         </View>
       ) : step == 2 ? (
         <KeyboardAvoidingView
-          style={{flex: 1,height: screenHeight * 0.9, backgroundColor: '#C7EEFF'}}
+          style={{
+            flex: 1,
+            height: screenHeight * 0.9,
+            backgroundColor: '#C7EEFF',
+          }}
           behavior={'height'}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <ScrollView
               contentContainerStyle={{
                 backgroundColor: '#C7EEFF',
-    
+
                 paddingTop: screenHeight * 0.02,
                 paddingBottom: screenHeight * 0.1,
                 alignItems: 'center',
