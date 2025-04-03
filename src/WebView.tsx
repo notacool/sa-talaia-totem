@@ -25,6 +25,7 @@ import Indicator from '../assets/images/iconIndicator.svg';
 import Info from '../assets/images/iconInfo.svg';
 import Selfie from '../assets/images/iconSelfie.svg';
 import {RootStackParamList} from '../types/navProps';
+import Home from '../assets/images/iconHome.svg';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
@@ -47,7 +48,7 @@ const WebViewScreen = () => {
       setTimeout(() => {
         console.log('User inactive, navigating to Home...');
         navigation.navigate('Home');
-      }, 60000), // 30 seconds timeout
+      }, 120000), // 30 seconds timeout
     );
   };
 
@@ -165,7 +166,7 @@ const WebViewScreen = () => {
                             fontSize: screenWidth * 0.014,
                             fontFamily: 'Poppins-Regular',
                           }}>
-                          Punto de información.{' '}
+                          Punto de información.
                         </Text>
                         <Text
                           style={{
@@ -173,7 +174,7 @@ const WebViewScreen = () => {
                             fontSize: screenWidth * 0.014,
                             fontFamily: 'Poppins-Regular',
                           }}>
-                          Punt d'informació.{' '}
+                          Punt d'informació.
                         </Text>
                       </View>
                       <Text
@@ -232,26 +233,26 @@ const WebViewScreen = () => {
                 Information screen
               </Text>
             </View>
-
-            {/* <Text style={styles.title}>
-                Ajuntament de{'\n'}
-                <Text style={styles.boldText}>Sant Josep de sa Talaia</Text>
-              </Text> */}
           </View>
         </ImageBackground>
         {loading ? (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color="#006EA0" />
-          </View> 
-        ): <View style={{...styles.loaderContainer, marginTop: screenHeight * 0.01}}><Text style={{
-          fontSize: screenWidth * 0.025,
-          fontFamily: 'Poppins-Regular',
-        }}>Inicio</Text></View>}
+          </View>
+        ) : (
+          <View
+            style={{...styles.loaderContainer, paddingVertical: screenHeight * 0.01}}>
+            <TouchableOpacity onPress={() => navigation.navigate('Home')}><Home
+              height={screenHeight * 0.055}
+              width={screenWidth * 0.1}
+              style={{height: screenWidth * 0.02}}></Home></TouchableOpacity>
+          </View>
+        )}
         <WebView
           source={{uri: url}}
           onLoadStart={() => setLoading(true)} // Show loader when WebView starts loading
           onLoad={() => setLoading(false)} // Hide loader when WebView finishes loading
-          style={{flex: 1}}
+          style={{flex: 1, backgroundColor: '#C7EEFF'}}
         />
       </View>
     </TouchableWithoutFeedback>
@@ -267,6 +268,7 @@ const styles = StyleSheet.create({
   loaderContainer: {
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#C7EEFF',
   },
   headerContainer: {
     width: screenWidth,

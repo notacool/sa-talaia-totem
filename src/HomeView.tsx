@@ -1,10 +1,12 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Button,
   Dimensions,
   Image,
   ImageBackground,
+  Keyboard,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +14,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import Header from '../assets/images/bg.png';
@@ -29,15 +32,9 @@ import Location from '../assets/images/iconLocation.svg';
 import Temperature from '../assets/images/iconTemperature.svg';
 import TemperatureCold from '../assets/images/iconTemperatureCold.svg';
 import TemperatureHot from '../assets/images/iconTemperatureHot.svg';
-import Wind from '../assets/images/iconWind.svg';
-import Happy from '../assets/images/iconHappy.svg';
-import Sad from '../assets/images/iconSad.svg';
-import NeutralFace from '../assets/images/iconNeutralFace.svg';
 import CO2 from '../assets/images/iconCo2.svg';
 import CO2Bad from '../assets/images/iconCo2Bad.svg';
 import CO2Regular from '../assets/images/iconCo2Regular.svg';
-import Point from '../assets/images/iconPoint.svg';
-import Rainy from '../assets/images/iconRainy.svg';
 import RectangleSelfie from '../assets/images/iconRectangleSelfie.png';
 import TakeSelfie from '../assets/images/iconTakeSelfie.svg';
 import Next from '../assets/images/iconNext.svg';
@@ -52,12 +49,24 @@ import Check from '../assets/images/iconCheck.svg';
 import Popup from '../assets/images/popup.png';
 import Sent from '../assets/images/sent.svg';
 import {launchCamera} from 'react-native-image-picker';
-import {ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD, TOTEM_ID_LAST_DIGITS} from '@env';
+import {
+  ODOO_URL,
+  ODOO_DB,
+  ODOO_USERNAME,
+  ODOO_PASSWORD,
+  TOTEM_ID_LAST_DIGITS,
+} from '@env';
 import {Totem} from '../types/entities';
 import {useNavigation} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../types/navProps';
 import Paho from 'paho-mqtt';
+import {
+  Camera,
+  CameraPermissionStatus,
+  useCameraDevices,
+} from 'react-native-vision-camera';
+import RNFS from 'react-native-fs';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
@@ -83,6 +92,22 @@ export function HomeView(): JSX.Element {
   const [messages, setMessages] = useState<Data[]>();
   const [airQualityValue, setAirQualityValue] = useState<number>();
   const [airQuality, setAirQuality] = useState<string>();
+  const [hasPermission, setHasPermission] = useState(false);
+  const devices = useCameraDevices();
+  const device = devices.find(cam => cam.position === 'front');
+  const cameraRef = useRef<Camera>(null);
+
+  useEffect(() => {
+    const getPermission = async () => {
+      const status: string = await Camera.requestCameraPermission();
+      setHasPermission(status === 'authorized');
+    };
+    getPermission();
+  }, []);
+
+  useEffect(() => {
+    console.log('Dispositivos disponibles:', devices);
+  }, [devices]);
 
   const limits = {
     CO: [
@@ -365,7 +390,7 @@ export function HomeView(): JSX.Element {
         }),
       });
       const authData = await authResponse.json();
-      console.log(authData)
+      console.log(authData);
       if (!authData.result) {
         throw new Error('Error de autenticación en Odoo');
       }
@@ -401,20 +426,37 @@ export function HomeView(): JSX.Element {
     }
   };
 
-  const onTakePhoto = () => {
-    setStep(1);
-    launchCamera({mediaType: 'photo', includeBase64: true}, response => {
-      if (response?.assets && response.assets.length > 0) {
-        if (response.assets[0].uri === undefined) return;
-        const image =
-          Platform.OS === 'ios'
-            ? response.assets[0].uri.replace('file://', '')
-            : response.assets[0].uri;
-        const image64 = response.assets[0].base64 as string;
-        setImage(image);
-        setImage64(image64);
-      }
+  const onTakePhoto = async () => {
+    if (cameraRef.current == null) return;
+
+    const photo = await cameraRef.current.takePhoto({
+      flash: 'off',
     });
+
+    const image = photo.path;
+    console.log(image);
+
+    try {
+      const base64 = await RNFS.readFile(photo.path, 'base64');
+      console.log(base64);
+      setImage(image);
+      setImage64(base64);
+      setStep(2);
+    } catch (error) {
+      console.error('Error al leer el archivo:', error);
+    }
+    // launchCamera({mediaType: 'photo', includeBase64: true}, response => {
+    //   if (response?.assets && response.assets.length > 0) {
+    //     if (response.assets[0].uri === undefined) return;
+    //     const image =
+    //       Platform.OS === 'ios'
+    //         ? response.assets[0].uri.replace('file://', '')
+    //         : response.assets[0].uri;
+    //     const image64 = response.assets[0].base64 as string;
+    //     setImage(image);
+    //     setImage64(image64);
+    //   }
+    // });
   };
 
   const getPrivacyTitle = (lang: LanguageType) => {
@@ -435,11 +477,42 @@ export function HomeView(): JSX.Element {
   const sendEmailOdoo = async () => {
     setSendingImage(true);
     try {
-      const imageBase64 = 'data:image/jpeg;base64,' + image64;
-      // 1️⃣ Crear el correo en Odoo
+      // 🔹 Paso 1: crear el attachment en Odoo
+      const attachmentResponse = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: 'ir.attachment',
+            method: 'create',
+            args: [
+              {
+                name: 'foto_recuerdo.jpg',
+                type: 'binary',
+                datas: image64, // 👈 solo el base64, sin "data:image/jpeg;base64,"
+                res_model: 'mail.mail',
+                res_id: 0,
+                mimetype: 'image/jpeg',
+              },
+            ],
+            kwargs: {},
+          },
+        }),
+      });
+  
+      const attachmentData = await attachmentResponse.json();
+      const attachmentId = attachmentData.result;
+  
+      if (!attachmentId) {
+        throw new Error('❌ No se pudo crear el attachment');
+      }
+  
+      // 🔹 Paso 2: crear el correo con el attachment
       const createResponse = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jsonrpc: '2.0',
           method: 'call',
@@ -449,49 +522,50 @@ export function HomeView(): JSX.Element {
             args: [
               {
                 email_from: data?.mail || 'default@mail.com',
-                email_to: email || 'recipient@mail.com',
+                email_to: email || 'destinatario@mail.com',
                 subject: 'Aquí tienes tu foto de recuerdo!',
-                body_html: `<img src="${imageBase64}" alt="Imagen de prueba" width="500px"/>`,
+                body_html: 'Te adjuntamos la foto que te has sacado de recuerdo!',
+                attachment_ids: [[6, false, [attachmentId]]],
               },
             ],
             kwargs: {},
           },
         }),
       });
-
+  
       const createData = await createResponse.json();
-
-      console.log(createData)
-
-      if (!createData || !createData.result) {
-        throw new Error('❌ Odoo no devolvió un ID de correo');
-      }
-
       const mailId = createData.result;
-
-      // 2️⃣ Enviar el correo
-      const sendResponse = await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
+  
+      if (!mailId) {
+        throw new Error('❌ No se pudo crear el correo en Odoo');
+      }
+  
+      // 🔹 Paso 3: enviar el correo
+      await fetch(`${ODOO_URL}/web/dataset/call_kw`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jsonrpc: '2.0',
           method: 'call',
           params: {
             model: 'mail.mail',
             method: 'send',
-            args: [[mailId]], // Se envía el ID del correo creado
+            args: [[mailId]],
             kwargs: {},
           },
         }),
-      }).then(response => {
-        console.log(response)
-        setSendingImage(false);
-        setStep(2);
       });
+  
+      // ✅ Éxito
+      setSendingImage(false);
+      setAccepted(false);
+      setStep(3);
     } catch (error) {
       console.error('❌ Error al enviar correo:', error);
+      setSendingImage(false);
     }
   };
+  
 
   type NavigationProps = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -516,6 +590,7 @@ export function HomeView(): JSX.Element {
         client.subscribe('/test/message');
       },
       onFailure: err => {
+        console.log('❌ Error de conexión MQTT:', err);
         getMQTTData();
         console.error('❌ Error de conexión:', err);
       },
@@ -523,7 +598,7 @@ export function HomeView(): JSX.Element {
 
     client.onMessageArrived = message => {
       console.log(message);
-      console.log(TOTEM_ID_LAST_DIGITS)
+      console.log(TOTEM_ID_LAST_DIGITS);
       if (
         JSON.parse(message.payloadString).device_info.uuid.slice(-4) ===
         TOTEM_ID_LAST_DIGITS
@@ -532,9 +607,7 @@ export function HomeView(): JSX.Element {
       }
     };
 
-    client.onConnectionLost = responseObject => {
-      getMQTTData();
-    };
+    client.onConnectionLost = responseObject => {};
   };
 
   useEffect(() => {
@@ -548,19 +621,10 @@ export function HomeView(): JSX.Element {
 
   return (
     <View style={styles.container}>
-      {/* SVG de fondo arriba */}
-      {/* <View style={styles.headerContainer}>
-        <Headerf
-          width="100%"
-          height="100%"
-          preserveAspectRatio="none"
-        />
-      </View> */}
       <ImageBackground
         source={Header}
         style={styles.headerContainer}
         resizeMode="stretch">
-        {/* Sección superior: Logo + Nombre del Ayuntamiento */}
         <View style={styles.headerSection}>
           <View
             style={{
@@ -720,11 +784,6 @@ export function HomeView(): JSX.Element {
               Information screen
             </Text>
           </View>
-
-          {/* <Text style={styles.title}>
-          Ajuntament de{'\n'}
-          <Text style={styles.boldText}>Sant Josep de sa Talaia</Text>
-        </Text> */}
         </View>
       </ImageBackground>
 
@@ -1453,14 +1512,15 @@ export function HomeView(): JSX.Element {
                                   CO:{' '}
                                 </Text>
                                 {messages &&
-                                  messages.find(val => val.n === 'co') && 
-                                    messages.find(val => val.n === 'co')?.v > 0 ?
-                                  (
-                                    Math.round(
-                                      messages.find(val => val.n === 'co')?.v *
-                                        10,
-                                    ) / 10
-                                  ).toFixed(1): 0}{' '}
+                                messages.find(val => val.n === 'co') &&
+                                messages.find(val => val.n === 'co')?.v > 0
+                                  ? (
+                                      Math.round(
+                                        messages.find(val => val.n === 'co')
+                                          ?.v * 10,
+                                      ) / 10
+                                    ).toFixed(1)
+                                  : 0}{' '}
                                 <Text
                                   style={{
                                     fontSize: screenWidth * 0.015,
@@ -1491,13 +1551,15 @@ export function HomeView(): JSX.Element {
                                   O3:{' '}
                                 </Text>
                                 {messages &&
-                                  messages.find(val => val.n === 'o3') && messages.find(val => val.n === 'o3')?.v > 0 ?
-                                  (
-                                    Math.round(
-                                      messages.find(val => val.n === 'o3')?.v *
-                                        10,
-                                    ) / 10
-                                  ).toFixed(1): 0}{' '}
+                                messages.find(val => val.n === 'o3') &&
+                                messages.find(val => val.n === 'o3')?.v > 0
+                                  ? (
+                                      Math.round(
+                                        messages.find(val => val.n === 'o3')
+                                          ?.v * 10,
+                                      ) / 10
+                                    ).toFixed(1)
+                                  : 0}{' '}
                                 <Text
                                   style={{
                                     fontSize: screenWidth * 0.015,
@@ -1576,13 +1638,15 @@ export function HomeView(): JSX.Element {
                                   NO2:{' '}
                                 </Text>
                                 {messages &&
-                                  messages.find(val => val.n === 'no2') && messages.find(val => val.n === 'no2')?.v > 0 ?
-                                  (
-                                    Math.round(
-                                      messages.find(val => val.n === 'no2')?.v *
-                                        10,
-                                    ) / 10
-                                  ).toFixed(1): 0}{' '}
+                                messages.find(val => val.n === 'no2') &&
+                                messages.find(val => val.n === 'no2')?.v > 0
+                                  ? (
+                                      Math.round(
+                                        messages.find(val => val.n === 'no2')
+                                          ?.v * 10,
+                                      ) / 10
+                                    ).toFixed(1)
+                                  : 0}{' '}
                                 <Text
                                   style={{
                                     fontSize: screenWidth * 0.015,
@@ -1613,13 +1677,15 @@ export function HomeView(): JSX.Element {
                                   SO2:{' '}
                                 </Text>
                                 {messages &&
-                                  messages.find(val => val.n === 'so2') && messages.find(val => val.n === 'so2')?.v > 0 ?
-                                  (
-                                    Math.round(
-                                      messages.find(val => val.n === 'so2')?.v *
-                                        10,
-                                    ) / 10
-                                  ).toFixed(1): 0}{' '}
+                                messages.find(val => val.n === 'so2') &&
+                                messages.find(val => val.n === 'so2')?.v > 0
+                                  ? (
+                                      Math.round(
+                                        messages.find(val => val.n === 'so2')
+                                          ?.v * 10,
+                                      ) / 10
+                                    ).toFixed(1)
+                                  : 0}{' '}
                                 <Text
                                   style={{
                                     fontSize: screenWidth * 0.015,
@@ -1841,367 +1907,6 @@ export function HomeView(): JSX.Element {
                         </View>
                       </View>
                     </View>
-                    {/* <View style={styles.row}> */}
-                    {/*<View style={styles.card}>
-                        <View
-                          style={{
-                            backgroundColor: 'white',
-                            width: '100%',
-                            borderTopLeftRadius: 16,
-                            borderTopRightRadius: 16,
-                          }}>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.02,
-                              fontFamily: 'Poppins-Bold',
-                              lineHeight: screenWidth * 0.025,
-                              textAlign: 'center',
-                              paddingVertical: screenHeight * 0.003,
-                            }}>
-                            CALIDAD DEL AIRE
-                          </Text>
-                        </View>
-                        <View
-                          style={{
-                            backgroundColor: 'transparent',
-                            width: '100%',
-                            borderBottomLeftRadius: 16,
-                            borderBottomRightRadius: 16,
-                            borderColor: 'white',
-                            borderWidth: 0.5,
-                            alignItems: 'center',
-                          }}>
-                          <View style={{display: 'flex', flexDirection: 'row'}}>
-                            <Text
-                              style={{
-                                ...styles.infoSubtitleRed,
-                                fontSize: screenWidth * 0.0125,
-                                fontFamily: 'Poppins-Regular',
-                                textAlign: 'center',
-                                paddingVertical: screenHeight * 0.003,
-                              }}>
-                              Qualitat de l'aire ·
-                            </Text>
-                            <Text
-                              style={{
-                                ...styles.infoSubtitleYellow,
-                                fontSize: screenWidth * 0.0125,
-                                fontFamily: 'Poppins-Regular',
-                                textAlign: 'center',
-                                paddingVertical: screenHeight * 0.003,
-                              }}>
-                              Air quality
-                            </Text>
-                          </View>
-                        </View>
-                        <View
-                          style={{
-                            height: '42.5%',
-                            flexDirection: 'row',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}>
-                          {airQuality === 'Buena' ? (
-                            <CO2 height="75%" width="30%"></CO2>
-                          ) : airQuality === 'Moderada' ? (
-                            <CO2Regular height="75%" width="30%" />
-                          ) : (
-                            <CO2Bad height="75%" width="30%" />
-                          )}
-                          <View
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'row',
-                              justifyContent: 'center',
-                              alignItems: 'center',
-                            }}>
-                            <Text
-                              style={{
-                                fontSize: screenWidth * 0.075,
-                                fontFamily: 'Poppins-SemiBold',
-                              }}>
-                              {airQualityValue}
-                            </Text>
-                            <Text
-                              style={{
-                                fontSize: screenWidth * 0.02,
-                                fontFamily: 'Poppins-Regular',
-                              }}>
-                              ppm.
-                            </Text>
-                          </View>
-                        </View>
-                        <View
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'row',
-                            height: '12.5%',
-                            // backgroundColor: 'red',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: screenWidth * 0.01,
-                          }}>
-                          <Point height="40%"></Point>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Humedad del aire
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Humitat de l'aire
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleYellow,
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Air humidity
-                          </Text>
-                          <Point height="40%"></Point>
-                        </View>
-                        <View
-                          style={{
-                            height: '15%',
-                            backgroundColor: 'rgba(255,255,255,0.6)',
-                            width: '95%',
-                            borderRadius: 16,
-                            display: 'flex',
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: screenWidth * 0.005,
-                          }}>
-                          //<Rainy width="10%" height="50%"></Rainy>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.02,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
-                            }}>
-                            {messages &&
-                              messages.find(val => val.n === 'hum') &&
-                              (
-                                Math.round(
-                                  messages.find(val => val.n === 'hum')?.v * 10,
-                                ) / 10
-                              ).toFixed(1)}
-                            %
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.012,
-
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
-                            }}>
-                            Humedad
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.012,
-                              lineHeight: screenHeight * 0.01,
-                              fontFamily: 'Poppins-Medium',
-                            }}>
-                            Humitat
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleYellow,
-                              fontSize: screenWidth * 0.012,
-                              lineHeight: screenHeight * 0.01,
-                              fontFamily: 'Poppins-Medium',
-                            }}>
-                            Humidity
-                          </Text>
-                        </View>
-                      </View>*/}
-                    {/* <View style={styles.card}>
-                        <View
-                          style={{
-                            backgroundColor: 'white',
-                            width: '100%',
-                            borderTopLeftRadius: 16,
-                            borderTopRightRadius: 16,
-                          }}>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.02,
-                              fontFamily: 'Poppins-Bold',
-                              lineHeight: screenWidth * 0.025,
-                              textAlign: 'center',
-                              paddingVertical: screenHeight * 0.003,
-                            }}>
-                            PARTÍCULAS RESPIRABLES PM2,5
-                          </Text>
-                        </View>
-                        <View
-                          style={{
-                            backgroundColor: 'transparent',
-                            width: '100%',
-                            borderBottomLeftRadius: 16,
-                            borderBottomRightRadius: 16,
-                            borderColor: 'white',
-                            borderWidth: 0.5,
-                            alignItems: 'center',
-                          }}>
-                          <View style={{display: 'flex', flexDirection: 'row'}}>
-                            <Text
-                              style={{
-                                ...styles.infoSubtitleRed,
-                                fontSize: screenWidth * 0.0125,
-                                fontFamily: 'Poppins-Regular',
-                                textAlign: 'center',
-                                paddingVertical: screenHeight * 0.003,
-                              }}>
-                              Particules respirables ·
-                            </Text>
-                            <Text
-                              style={{
-                                ...styles.infoSubtitleYellow,
-                                fontSize: screenWidth * 0.0125,
-                                fontFamily: 'Poppins-Regular',
-                                textAlign: 'center',
-                                paddingVertical: screenHeight * 0.003,
-                              }}>
-                              Respirable particles
-                            </Text>
-                          </View>
-                        </View>
-                        <View
-                          style={{
-                            height: '42.5%',
-                            flexDirection: 'row',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}>
-                          <Happy height="75%" width="30%"></Happy>
-                          <View
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'row',
-                              justifyContent: 'center',
-                              alignItems: 'center',
-                            }}>
-                            <Text
-                              style={{
-                                fontSize: screenWidth * 0.075,
-                                fontFamily: 'Poppins-SemiBold',
-                              }}>
-                              {messages &&
-                                messages.find(val => val.n === 'pm2.5') &&
-                                (
-                                  Math.round(
-                                    messages.find(val => val.n === 'pm2.5')?.v *
-                                      10,
-                                  ) / 10
-                                ).toFixed(1)}
-                            </Text>
-                            <Text
-                              style={{
-                                fontSize: screenWidth * 0.02,
-                                fontFamily: 'Poppins-Regular',
-                              }}>
-                              ug/m3
-                            </Text>
-                          </View>
-                        </View>
-                        <View
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'row',
-                            height: '12.5%',
-                            // backgroundColor: 'red',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: screenWidth * 0.01,
-                          }}>
-                          <Point height="40%"></Point>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Partículas gruesas
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Particules gruesses
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleYellow,
-                              fontSize: screenWidth * 0.01,
-                              fontFamily: 'Poppins-Bold',
-                            }}>
-                            Coarse particles
-                          </Text>
-                          <Point height="40%"></Point>
-                        </View>
-                        <View
-                          style={{
-                            height: '15%',
-                            backgroundColor: 'rgba(255,255,255,0.6)',
-                            width: '95%',
-                            borderRadius: 16,
-                            display: 'flex',
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: screenWidth * 0.005,
-                          }}>
-                          // <Rainy width="10%" height="50%"></Rainy> 
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.02,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.02,
-                            }}>
-                            28ug/m3
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
-                            }}>
-                            Nivel óptimo
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
-                            }}>
-                            Nivell òptim
-                          </Text>
-                          <Text
-                            style={{
-                              ...styles.infoSubtitleYellow,
-                              fontSize: screenWidth * 0.012,
-                              fontFamily: 'Poppins-Medium',
-                              lineHeight: screenHeight * 0.01,
-                            }}>
-                            Optimal level
-                          </Text>
-                        </View>
-                      </View> */}
-                    {/* </View> */}
                     <View style={styles.selfieCard}>
                       <View
                         style={{
@@ -2283,7 +1988,7 @@ export function HomeView(): JSX.Element {
                             height: '85%',
                           }}
                           resizeMode="stretch">
-                          <TouchableOpacity onPress={() => onTakePhoto()}>
+                          <TouchableOpacity onPress={() => setStep(1)}>
                             <TakeSelfie
                               width0="85%"
                               height="85%"
@@ -2393,411 +2098,444 @@ export function HomeView(): JSX.Element {
             alignItems: 'center',
             gap: screenHeight * 0.015,
           }}>
-          <TouchableOpacity
+          <Camera
+            ref={cameraRef}
             style={{
-              alignSelf: 'center',
-              borderRadius: 100,
-              height: screenHeight * 0.055,
+              width: screenWidth,
+              height: screenHeight * 0.75,
             }}
-            onPress={() => setStep(0)}>
-            <Back
-              height={screenHeight * 0.055}
-              width={screenWidth * 0.1}
-              style={{height: screenWidth * 0.02}}></Back>
-          </TouchableOpacity>
-          <Image
-            key={1}
-            source={{
-              uri: `${image}`,
-            }}
-            style={{
-              width: screenWidth * 0.7,
-              height: screenHeight * 0.2,
-              borderRadius: 8,
-            }}
+            device={device}
+            isActive={true}
+            photo={true}
           />
-          <View
-            style={{
-              backgroundColor: '#DBF4FF',
-              borderRadius: 20,
-              paddingHorizontal: screenWidth * 0.05,
-            }}>
-            <Text
-              style={{
-                fontFamily: 'Poppins-Medium',
-                fontSize: screenWidth * 0.015,
-              }}>
-              PREVIEW
-            </Text>
+          <View>
+            <Button title="📸 Sacar Foto" onPress={onTakePhoto} />
           </View>
-          <View
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              gap: screenWidth * 0.02,
-            }}>
-            <Pressable onPress={() => setAccepted(!accepted)}>
-              <View
-                style={{
-                  backgroundColor: accepted
-                    ? '#006EA0'
-                    : 'rgba(255,255,255,0.6)',
-                  borderWidth: 0.5,
-                  borderColor: '#8CDBFF',
-                  borderRadius: 4,
-                  height: screenHeight * 0.035,
-                  width: screenWidth * 0.065,
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                }}>
-                {accepted && <Check height={screenHeight * 0.025}></Check>}
-              </View>
-            </Pressable>
-            <View
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: screenHeight * 0.005,
-              }}>
-              <Text
-                style={{
-                  fontFamily: 'Poppins-Bold',
-                  fontSize: screenWidth * 0.015,
-                }}>
-                Aceptación de la política de privacidad
-              </Text>
-              <Text
-                style={{
-                  ...styles.infoSubtitleRed,
-                  fontFamily: 'Poppins-Medium',
-                  fontSize: screenWidth * 0.015,
-                }}>
-                Acceptació de la política de privadesa
-              </Text>
-              <Text
-                style={{
-                  ...styles.infoSubtitleYellow,
-                  fontFamily: 'Poppins-Medium',
-                  fontSize: screenWidth * 0.015,
-                }}>
-                Acceptance of the privacy policy
-              </Text>
-            </View>
-            <View
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: screenHeight * 0.005,
-              }}>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: '#006EA0',
-                  borderRadius: 50,
-                  paddingHorizontal: screenWidth * 0.03,
-                  display: 'flex',
-                  width: screenWidth * 0.2,
-                  flexDirection: 'row',
-                  justifyContent: 'flex-start',
-                  height: screenHeight * 0.015,
-                  alignItems: 'center',
-                  gap: screenWidth * 0.01,
-                }}
-                onPress={() => {
-                  {
-                    setReadPrivacy(true);
-                    setPrivacyLang('es');
-                  }
-                }}>
-                <Text
-                  style={{
-                    color: 'white',
-                    fontSize: screenWidth * 0.0125,
-                    fontFamily: 'Poppins-Bold',
-                    lineHeight: screenHeight * 0.01,
-                  }}>
-                  Leer privacidad
-                </Text>
-                <Next
-                  height={screenHeight * 0.02}
-                  width={screenWidth * 0.02}></Next>
-              </TouchableOpacity>{' '}
-              <TouchableOpacity
-                style={{
-                  backgroundColor: '#006EA0',
-                  borderRadius: 50,
-                  paddingHorizontal: screenWidth * 0.03,
-                  display: 'flex',
-                  width: screenWidth * 0.2,
-                  flexDirection: 'row',
-                  justifyContent: 'flex-start',
-                  height: screenHeight * 0.015,
-                  alignItems: 'center',
-                  gap: screenWidth * 0.01,
-                }}
-                onPress={() => {
-                  {
-                    setReadPrivacy(true);
-                    setPrivacyLang('va');
-                  }
-                }}>
-                <Text
-                  style={{
-                    color: 'white',
-                    fontSize: screenWidth * 0.0125,
-                    fontFamily: 'Poppins-Bold',
-                    lineHeight: screenHeight * 0.01,
-                  }}>
-                  Llegir privadesa
-                </Text>
-                <Next
-                  height={screenHeight * 0.02}
-                  width={screenWidth * 0.02}></Next>
-              </TouchableOpacity>{' '}
-              <TouchableOpacity
-                style={{
-                  backgroundColor: '#006EA0',
-                  borderRadius: 50,
-                  paddingHorizontal: screenWidth * 0.03,
-                  // display: 'flex',
-                  width: screenWidth * 0.2,
-                  flexDirection: 'row',
-                  justifyContent: 'flex-start',
-                  height: screenHeight * 0.015,
-                  alignItems: 'center',
-                  gap: screenWidth * 0.01,
-                }}
-                onPress={() => {
-                  {
-                    setReadPrivacy(true);
-                    setPrivacyLang('en');
-                  }
-                }}>
-                <Text
-                  style={{
-                    color: 'white',
-                    fontSize: screenWidth * 0.0125,
-                    fontFamily: 'Poppins-Bold',
-                    lineHeight: screenHeight * 0.01,
-                  }}>
-                  Read privacy
-                </Text>
-                <Next
-                  height={screenHeight * 0.02}
-                  width={screenWidth * 0.02}></Next>
-              </TouchableOpacity>
-            </View>
-          </View>
-          {accepted && (
-            <View
-              style={{
-                display: 'flex',
+        </View>
+      ) : step == 2 ? (
+        <KeyboardAvoidingView
+          style={{flex: 1,height: screenHeight * 0.9, backgroundColor: '#C7EEFF'}}
+          behavior={'height'}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView
+              contentContainerStyle={{
+                backgroundColor: '#C7EEFF',
+    
+                paddingTop: screenHeight * 0.02,
+                paddingBottom: screenHeight * 0.1,
                 alignItems: 'center',
-                flexDirection: 'column',
-                marginTop: screenHeight * 0.02,
+                gap: screenHeight * 0.015,
+                overflow: 'scroll',
               }}>
-              <Text
+              <TouchableOpacity
                 style={{
-                  fontFamily: 'Poppins-Bold',
-                  fontSize: screenWidth * 0.025,
+                  alignSelf: 'center',
+                  borderRadius: 100,
+                  height: screenHeight * 0.055,
+                }}
+                onPress={() => setStep(0)}>
+                <Back
+                  height={screenHeight * 0.055}
+                  width={screenWidth * 0.1}
+                  style={{height: screenWidth * 0.02}}></Back>
+              </TouchableOpacity>
+              <Image
+                key={1}
+                source={{
+                  uri: 'data:image/jpeg;base64,' + image64,
+                }}
+                style={{
+                  width: screenWidth * 0.3,
+                  height: screenHeight * 0.1965,
+                  borderRadius: 8,
+                  backgroundColor: 'black',
+                }}
+                resizeMode="contain"
+              />
+              <View
+                style={{
+                  backgroundColor: '#DBF4FF',
+                  borderRadius: 20,
+                  paddingHorizontal: screenWidth * 0.05,
                 }}>
-                ENVÍALA POR EMAIL
-              </Text>
+                <Text
+                  style={{
+                    fontFamily: 'Poppins-Medium',
+                    fontSize: screenWidth * 0.015,
+                  }}>
+                  PREVIEW
+                </Text>
+              </View>
               <View
                 style={{
                   display: 'flex',
                   flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  gap: screenWidth * 0.02,
                 }}>
-                <Text
+                <Pressable onPress={() => setAccepted(!accepted)}>
+                  <View
+                    style={{
+                      backgroundColor: accepted
+                        ? '#006EA0'
+                        : 'rgba(255,255,255,0.6)',
+                      borderWidth: 0.5,
+                      borderColor: '#8CDBFF',
+                      borderRadius: 4,
+                      height: screenHeight * 0.035,
+                      width: screenWidth * 0.065,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}>
+                    {accepted && <Check height={screenHeight * 0.025}></Check>}
+                  </View>
+                </Pressable>
+                <View
                   style={{
-                    ...styles.infoSubtitleRed,
-                    fontFamily: 'Poppins-Regular',
-                    fontSize: screenWidth * 0.015,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: screenHeight * 0.005,
                   }}>
-                  Envieu-ho per correu electrònic ·
-                </Text>
-                <Text
+                  <Text
+                    style={{
+                      fontFamily: 'Poppins-Bold',
+                      fontSize: screenWidth * 0.015,
+                    }}>
+                    Aceptación de la política de privacidad
+                  </Text>
+                  <Text
+                    style={{
+                      ...styles.infoSubtitleRed,
+                      fontFamily: 'Poppins-Medium',
+                      fontSize: screenWidth * 0.015,
+                    }}>
+                    Acceptació de la política de privadesa
+                  </Text>
+                  <Text
+                    style={{
+                      ...styles.infoSubtitleYellow,
+                      fontFamily: 'Poppins-Medium',
+                      fontSize: screenWidth * 0.015,
+                    }}>
+                    Acceptance of the privacy policy
+                  </Text>
+                </View>
+                <View
                   style={{
-                    ...styles.infoSubtitleYellow,
-                    fontFamily: 'Poppins-Regular',
-                    fontSize: screenWidth * 0.015,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: screenHeight * 0.005,
                   }}>
-                  Send it by email
-                </Text>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#006EA0',
+                      borderRadius: 50,
+                      paddingHorizontal: screenWidth * 0.03,
+                      display: 'flex',
+                      width: screenWidth * 0.2,
+                      flexDirection: 'row',
+                      justifyContent: 'flex-start',
+                      height: screenHeight * 0.015,
+                      alignItems: 'center',
+                      gap: screenWidth * 0.01,
+                    }}
+                    onPress={() => {
+                      {
+                        setReadPrivacy(true);
+                        setPrivacyLang('es');
+                      }
+                    }}>
+                    <Text
+                      style={{
+                        color: 'white',
+                        fontSize: screenWidth * 0.0125,
+                        fontFamily: 'Poppins-Bold',
+                        lineHeight: screenHeight * 0.01,
+                      }}>
+                      Leer privacidad
+                    </Text>
+                    <Next
+                      height={screenHeight * 0.02}
+                      width={screenWidth * 0.02}></Next>
+                  </TouchableOpacity>{' '}
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#006EA0',
+                      borderRadius: 50,
+                      paddingHorizontal: screenWidth * 0.03,
+                      display: 'flex',
+                      width: screenWidth * 0.2,
+                      flexDirection: 'row',
+                      justifyContent: 'flex-start',
+                      height: screenHeight * 0.015,
+                      alignItems: 'center',
+                      gap: screenWidth * 0.01,
+                    }}
+                    onPress={() => {
+                      {
+                        setReadPrivacy(true);
+                        setPrivacyLang('va');
+                      }
+                    }}>
+                    <Text
+                      style={{
+                        color: 'white',
+                        fontSize: screenWidth * 0.0125,
+                        fontFamily: 'Poppins-Bold',
+                        lineHeight: screenHeight * 0.01,
+                      }}>
+                      Llegir privadesa
+                    </Text>
+                    <Next
+                      height={screenHeight * 0.02}
+                      width={screenWidth * 0.02}></Next>
+                  </TouchableOpacity>{' '}
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#006EA0',
+                      borderRadius: 50,
+                      paddingHorizontal: screenWidth * 0.03,
+                      // display: 'flex',
+                      width: screenWidth * 0.2,
+                      flexDirection: 'row',
+                      justifyContent: 'flex-start',
+                      height: screenHeight * 0.015,
+                      alignItems: 'center',
+                      gap: screenWidth * 0.01,
+                    }}
+                    onPress={() => {
+                      {
+                        setReadPrivacy(true);
+                        setPrivacyLang('en');
+                      }
+                    }}>
+                    <Text
+                      style={{
+                        color: 'white',
+                        fontSize: screenWidth * 0.0125,
+                        fontFamily: 'Poppins-Bold',
+                        lineHeight: screenHeight * 0.01,
+                      }}>
+                      Read privacy
+                    </Text>
+                    <Next
+                      height={screenHeight * 0.02}
+                      width={screenWidth * 0.02}></Next>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.inputContainer}>
-                <Text
+              {accepted && (
+                <View
                   style={{
-                    ...styles.label,
-                    fontFamily: 'Poppins-Regular',
-                    fontSize: screenWidth * 0.015,
+                    display: 'flex',
+                    alignItems: 'center',
+                    flexDirection: 'column',
+                    marginTop: screenHeight * 0.02,
                   }}>
-                  Email
-                </Text>
+                  <Text
+                    style={{
+                      fontFamily: 'Poppins-Bold',
+                      fontSize: screenWidth * 0.025,
+                    }}>
+                    ENVÍALA POR EMAIL
+                  </Text>
+                  <View
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                    <Text
+                      style={{
+                        ...styles.infoSubtitleRed,
+                        fontFamily: 'Poppins-Regular',
+                        fontSize: screenWidth * 0.015,
+                      }}>
+                      Envieu-ho per correu electrònic ·
+                    </Text>
+                    <Text
+                      style={{
+                        ...styles.infoSubtitleYellow,
+                        fontFamily: 'Poppins-Regular',
+                        fontSize: screenWidth * 0.015,
+                      }}>
+                      Send it by email
+                    </Text>
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text
+                      style={{
+                        ...styles.label,
+                        fontFamily: 'Poppins-Regular',
+                        fontSize: screenWidth * 0.015,
+                      }}>
+                      Email
+                    </Text>
+                    <View
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        gap: screenWidth * 0.02,
+                        width: screenWidth * 0.7,
+                      }}>
+                      <TextInput
+                        onFocus={() => {
+                          setFocused(true);
+                        }}
+                        onBlur={() => {
+                          setFocused(false);
+                        }}
+                        onChange={e => {
+                          setEmail(e.nativeEvent.text);
+                        }}
+                        style={{
+                          ...styles.input,
+                          backgroundColor: focused ? '#DBF4FF' : 'white',
+                        }}
+                        placeholder="Escribe. Write"
+                        placeholderTextColor="#90CAF9" // Light blue placeholder
+                        keyboardType="email-address"
+                      />
+                      <TouchableOpacity onPress={pressSend}>
+                        <View
+                          style={{
+                            height: screenHeight * 0.025,
+                            flex: 1,
+                            backgroundColor: '#006EA0',
+                            borderWidth: 1,
+                            borderColor: '#8CDBFF',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            borderRadius: 14,
+                            display: 'flex',
+                            flexDirection: 'row',
+                            paddingHorizontal: screenWidth * 0.02,
+                          }}>
+                          {sendingImage ? (
+                            <ActivityIndicator
+                              size="small"
+                              color="white"></ActivityIndicator>
+                          ) : (
+                            <>
+                              <Text
+                                style={{
+                                  color: 'white',
+                                  fontFamily: 'Poppins-Regular',
+                                  fontSize: screenWidth * 0.02,
+                                  lineHeight: screenHeight * 0.01,
+                                }}>
+                                Enviar.
+                              </Text>
+                              <Text
+                                style={{
+                                  color: '#EBC714',
+                                  fontFamily: 'Poppins-Regular',
+                                  fontSize: screenWidth * 0.02,
+                                  lineHeight: screenHeight * 0.01,
+                                  marginRight: screenWidth * 0.01,
+                                }}>
+                                Send
+                              </Text>
+                              <Next
+                                height={screenHeight * 0.04}
+                                width={screenWidth * 0.04}></Next>
+                            </>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )}
+              {readPrivacy && (
                 <View
                   style={{
                     display: 'flex',
                     flexDirection: 'row',
-                    gap: screenWidth * 0.02,
-                    width: screenWidth * 0.7,
+                    gap: screenWidth * 0.01,
+                    justifyContent: 'center',
+                    alignItems: 'center',
                   }}>
-                  <TextInput
-                    onFocus={() => {
-                      setFocused(true);
-                    }}
-                    onBlur={() => {
-                      setFocused(false);
-                    }}
-                    onChange={e => {
-                      setEmail(e.nativeEvent.text);
-                    }}
-                    style={{
-                      ...styles.input,
-                      backgroundColor: focused ? '#DBF4FF' : 'white',
-                    }}
-                    placeholder="Escribe. Write"
-                    placeholderTextColor="#90CAF9" // Light blue placeholder
-                    keyboardType="email-address"
-                  />
-                  <TouchableOpacity onPress={pressSend}>
-                    <View
-                      style={{
-                        height: screenHeight * 0.025,
-                        flex: 1,
-                        backgroundColor: '#006EA0',
-                        borderWidth: 1,
-                        borderColor: '#8CDBFF',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        borderRadius: 14,
-                        display: 'flex',
-                        flexDirection: 'row',
-                        paddingHorizontal: screenWidth * 0.02,
-                      }}>
-                      {sendingImage ? (
-                        <ActivityIndicator
-                          size="small"
-                          color="white"></ActivityIndicator>
-                      ) : (
-                        <>
-                          <Text
-                            style={{
-                              color: 'white',
-                              fontFamily: 'Poppins-Regular',
-                              fontSize: screenWidth * 0.02,
-                              lineHeight: screenHeight * 0.01,
-                            }}>
-                            Enviar.
-                          </Text>
-                          <Text
-                            style={{
-                              color: '#EBC714',
-                              fontFamily: 'Poppins-Regular',
-                              fontSize: screenWidth * 0.02,
-                              lineHeight: screenHeight * 0.01,
-                              marginRight: screenWidth * 0.01,
-                            }}>
-                            Send
-                          </Text>
-                          <Next
-                            height={screenHeight * 0.04}
-                            width={screenWidth * 0.04}></Next>
-                        </>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-          {readPrivacy && (
-            <View
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                gap: screenWidth * 0.01,
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}>
-              <Text
-                style={{
-                  fontFamily: 'Poppins-Bold',
-                  fontSize: screenWidth * 0.015,
-                }}>
-                Cerrar
-              </Text>
-              <TouchableOpacity onPress={() => setReadPrivacy(false)}>
-                <Close
-                  height={screenHeight * 0.03}
-                  width={screenWidth * 0.05}></Close>
-              </TouchableOpacity>
-              <Text
-                style={{
-                  ...styles.infoSubtitleYellow,
-                  fontFamily: 'Poppins-Medium',
-                  fontSize: screenWidth * 0.015,
-                }}>
-                Close
-              </Text>
-            </View>
-          )}
-          {readPrivacy && (
-            <View
-              style={{
-                height: screenHeight * 0.15,
-                width: screenWidth * 0.85,
-                backgroundColor: '#EEFAFF',
-              }}>
-              <ScrollView
-                style={{
-                  marginTop: screenHeight * 0.02,
-                  gap: screenHeight * 0.0025,
-                  paddingHorizontal: screenWidth * 0.03,
-                }}>
-                <Text
-                  style={{
-                    ...(privacyLang === 'va'
-                      ? styles.infoSubtitleRed
-                      : privacyLang === 'en'
-                      ? styles.infoSubtitleYellow
-                      : undefined),
-                    fontFamily: 'Poppins-Bold',
-                    fontSize: screenWidth * 0.02,
-                  }}>
-                  {getPrivacyTitle(privacyLang)}
-                </Text>
-                {privacyLang == 'es' ? (
                   <Text
                     style={{
-                      fontFamily: 'Poppins-Regular',
+                      fontFamily: 'Poppins-Bold',
                       fontSize: screenWidth * 0.015,
                     }}>
-                    {data?.privacy_text}
+                    Cerrar
                   </Text>
-                ) : privacyLang == 'en' ? (
+                  <TouchableOpacity onPress={() => setReadPrivacy(false)}>
+                    <Close
+                      height={screenHeight * 0.03}
+                      width={screenWidth * 0.05}></Close>
+                  </TouchableOpacity>
                   <Text
                     style={{
                       ...styles.infoSubtitleYellow,
-                      fontFamily: 'Poppins-Regular',
+                      fontFamily: 'Poppins-Medium',
                       fontSize: screenWidth * 0.015,
                     }}>
-                    {data?.privacy_text_en}
+                    Close
                   </Text>
-                ) : (
-                  <Text
+                </View>
+              )}
+              {readPrivacy && (
+                <View
+                  style={{
+                    height: screenHeight * 0.15,
+                    width: screenWidth * 0.85,
+                    backgroundColor: '#EEFAFF',
+                  }}>
+                  <ScrollView
                     style={{
-                      ...styles.infoSubtitleRed,
-                      fontFamily: 'Poppins-Regular',
-                      fontSize: screenWidth * 0.015,
+                      marginTop: screenHeight * 0.02,
+                      gap: screenHeight * 0.0025,
+                      paddingHorizontal: screenWidth * 0.03,
                     }}>
-                    {data?.privacy_text_ca}
-                  </Text>
-                )}
-              </ScrollView>
-            </View>
-          )}
-        </View>
+                    <Text
+                      style={{
+                        ...(privacyLang === 'va'
+                          ? styles.infoSubtitleRed
+                          : privacyLang === 'en'
+                          ? styles.infoSubtitleYellow
+                          : undefined),
+                        fontFamily: 'Poppins-Bold',
+                        fontSize: screenWidth * 0.02,
+                      }}>
+                      {getPrivacyTitle(privacyLang)}
+                    </Text>
+                    {privacyLang == 'es' ? (
+                      <Text
+                        style={{
+                          fontFamily: 'Poppins-Regular',
+                          fontSize: screenWidth * 0.015,
+                        }}>
+                        {data?.privacy_text}
+                      </Text>
+                    ) : privacyLang == 'en' ? (
+                      <Text
+                        style={{
+                          ...styles.infoSubtitleYellow,
+                          fontFamily: 'Poppins-Regular',
+                          fontSize: screenWidth * 0.015,
+                        }}>
+                        {data?.privacy_text_en}
+                      </Text>
+                    ) : (
+                      <Text
+                        style={{
+                          ...styles.infoSubtitleRed,
+                          fontFamily: 'Poppins-Regular',
+                          fontSize: screenWidth * 0.015,
+                        }}>
+                        {data?.privacy_text_ca}
+                      </Text>
+                    )}
+                  </ScrollView>
+                </View>
+              )}
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       ) : (
         <View
           style={{

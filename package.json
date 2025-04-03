@@ -19,6 +19,7 @@
     "react-native": "0.77.1",
     "react-native-dotenv": "^3.4.11",
     "react-native-event-listener": "^1.0.2",
+    "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.24.0",
     "react-native-image-picker": "^8.1.0",
     "react-native-linear-gradient": "^2.8.3",
@@ -27,6 +28,7 @@
     "react-native-screens": "^4.9.0",
     "react-native-svg": "^15.11.1",
     "react-native-vector-icons": "^10.2.0",
+    "react-native-vision-camera": "^4.6.4",
     "react-native-webview": "^13.13.2"
   },
   "devDependencies": {
