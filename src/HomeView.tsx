@@ -49,6 +49,7 @@ import Close from '../assets/images/iconClose.svg';
 import Check from '../assets/images/iconCheck.svg';
 import Popup from '../assets/images/popup.png';
 import Sent from '../assets/images/sent.svg';
+import Home from '../assets/images/iconHome.svg';
 import {launchCamera} from 'react-native-image-picker';
 import {
   ODOO_URL,
@@ -58,7 +59,7 @@ import {
   TOTEM_ID_LAST_DIGITS,
 } from '@env';
 import {Totem} from '../types/entities';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../types/navProps';
 import Paho from 'paho-mqtt';
@@ -68,6 +69,7 @@ import {
   useCameraDevices,
 } from 'react-native-vision-camera';
 import RNFS from 'react-native-fs';
+import WebView from 'react-native-webview';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
@@ -93,20 +95,13 @@ export function HomeView(): JSX.Element {
   const [messages, setMessages] = useState<Data[]>();
   const [airQualityValue, setAirQualityValue] = useState<number>();
   const [airQuality, setAirQuality] = useState<string>();
-  const [hasPermission, setHasPermission] = useState(false);
+
   const devices = useCameraDevices();
   const device = devices.find(cam => cam.position === 'front');
   const cameraRef = useRef<Camera>(null);
   const [countdown, setCountdown] = useState(0);
   const [isCounting, setIsCounting] = useState(false);
-
-  useEffect(() => {
-    const getPermission = async () => {
-      const status: string = await Camera.requestCameraPermission();
-      setHasPermission(status === 'authorized');
-    };
-    getPermission();
-  }, []);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     console.log('Dispositivos disponibles:', devices);
@@ -494,6 +489,31 @@ export function HomeView(): JSX.Element {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (step !== 4) return;
+
+      resetTimer(); // Reset timer when screen is focused and step === 4
+
+      return () => {
+        if (timeoutId) clearTimeout(timeoutId); // Clear timeout when leaving screen
+      };
+    }, [step]),
+  );
+
+  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
+
+  const resetTimer = () => {
+    console.log('User is active, resetting timer...');
+    if (timeoutId) clearTimeout(timeoutId);
+    setTimeoutId(
+      setTimeout(() => {
+        console.log('User inactive, navigating to Home...');
+        setStep(0);
+      }, 120000), // 30 seconds timeout
+    );
+  };
 
   const sendEmailOdoo = async () => {
     setSendingImage(true);
@@ -2053,11 +2073,10 @@ export function HomeView(): JSX.Element {
                             alignItems: 'center',
                             gap: screenWidth * 0.01,
                           }}
-                          onPress={() =>
-                            navigation.navigate('WebView', {
-                              url: data?.web ? data.web : '',
-                            })
-                          }>
+                          onPress={() => {
+                            setStep(4);
+                            setLoading(true);
+                          }}>
                           <Text
                             style={{
                               color: 'white',
@@ -2141,6 +2160,18 @@ export function HomeView(): JSX.Element {
               justifyContent: 'center',
               gap: screenWidth * 0.05,
             }}>
+            <TouchableOpacity
+              style={{
+                alignSelf: 'center',
+                borderRadius: 100,
+                height: screenHeight * 0.055,
+              }}
+              onPress={() => setStep(0)}>
+              <Back
+                height={screenHeight * 0.055}
+                width={screenWidth * 0.1}
+                style={{height: screenWidth * 0.02}}></Back>
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleTakePhoto} disabled={isCounting}>
               <Photo
                 height={screenHeight * 0.055}
@@ -2148,12 +2179,12 @@ export function HomeView(): JSX.Element {
             </TouchableOpacity>
             {isCounting && (
               <Text
-              style={{
-                marginTop: screenHeight * 0.01,
-                fontSize: screenWidth * 0.05,
-                color: '#006EA0',
-                fontFamily: 'Poppins-Bold',
-              }}>
+                style={{
+                  marginTop: screenHeight * 0.01,
+                  fontSize: screenWidth * 0.05,
+                  color: '#006EA0',
+                  fontFamily: 'Poppins-Bold',
+                }}>
                 {countdown}
               </Text>
             )}
@@ -2587,7 +2618,7 @@ export function HomeView(): JSX.Element {
             </ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
-      ) : (
+      ) : step == 3 ? (
         <View
           style={{
             display: 'flex',
@@ -2695,6 +2726,35 @@ export function HomeView(): JSX.Element {
             </View>
           </ImageBackground>
         </View>
+      ) : (
+        <TouchableWithoutFeedback onPress={resetTimer}>
+          <View style={styles.container}>
+            {loading ? (
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#006EA0" />
+              </View>
+            ) : (
+              <View
+                style={{
+                  ...styles.loaderContainer,
+                  paddingVertical: screenHeight * 0.01,
+                }}>
+                <TouchableOpacity onPress={() => setStep(0)}>
+                  <Home
+                    height={screenHeight * 0.055}
+                    width={screenWidth * 0.1}
+                    style={{height: screenWidth * 0.02}}></Home>
+                </TouchableOpacity>
+              </View>
+            )}
+            <WebView
+              source={{uri: data?.web ? data.web : ''}}
+              onLoadStart={() => setLoading(true)} // Show loader when WebView starts loading
+              onLoad={() => setLoading(false)} // Hide loader when WebView finishes loading
+              style={{flex: 1, backgroundColor: '#C7EEFF'}}
+            />
+          </View>
+        </TouchableWithoutFeedback>
       )}
 
       {/* Sección inferior: Pantalla de información */}
@@ -2896,6 +2956,16 @@ const styles = StyleSheet.create({
     borderColor: '#8CDBFF', // Subtle border
     color: '#002A3E', // Text color
     paddingVertical: 0,
+  },
+  containerWeb: {
+    flex: 1,
+    height: screenHeight,
+    backgroundColor: 'white',
+  },
+  loaderContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#C7EEFF',
   },
 });
 

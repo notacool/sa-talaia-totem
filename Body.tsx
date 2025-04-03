@@ -1,10 +1,11 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {SafeAreaView, StyleSheet} from 'react-native';
 import {HomeView} from './src/HomeView';
-import { NavigationContainer } from "@react-navigation/native";
-import { createStackNavigator } from "@react-navigation/stack";
+import {NavigationContainer} from '@react-navigation/native';
+import {createStackNavigator} from '@react-navigation/stack';
 import WebViewScreen from './src/WebView';
-import { RootStackParamList } from './types/navProps';
+import {RootStackParamList} from './types/navProps';
+import {Camera} from 'react-native-vision-camera';
 
 const style = StyleSheet.create({
   globalView: {
@@ -19,11 +20,19 @@ const style = StyleSheet.create({
   },
 });
 
-
-
 const Stack = createStackNavigator<RootStackParamList>();
 
 function Body(): JSX.Element {
+  const [hasPermission, setHasPermission] = useState(false);
+
+  useEffect(() => {
+    const getPermission = async () => {
+      const status: string = await Camera.requestCameraPermission();
+      setHasPermission(status === 'authorized');
+    };
+    getPermission();
+  }, []);
+  
   return (
     <SafeAreaView style={style.globalView}>
       <NavigationContainer>

@@ -7,16 +7,10 @@
 
 import React from 'react';
 
-import {
-  useColorScheme,
-} from 'react-native';
+import {useColorScheme} from 'react-native';
 
-import {
-  Colors,
-
-} from 'react-native/Libraries/NewAppScreen';
+import {Colors} from 'react-native/Libraries/NewAppScreen';
 import Body from './Body';
-
 
 function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
@@ -25,10 +19,7 @@ function App(): React.JSX.Element {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
   };
 
-  return (
-    <Body></Body>
-  );
+  return <Body></Body>;
 }
-
 
 export default App;
