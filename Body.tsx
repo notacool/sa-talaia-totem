@@ -3,7 +3,6 @@ import {SafeAreaView, StyleSheet} from 'react-native';
 import {HomeView} from './src/HomeView';
 import {NavigationContainer} from '@react-navigation/native';
 import {createStackNavigator} from '@react-navigation/stack';
-import WebViewScreen from './src/WebView';
 import {RootStackParamList} from './types/navProps';
 import {Camera} from 'react-native-vision-camera';
 
@@ -32,13 +31,12 @@ function Body(): JSX.Element {
     };
     getPermission();
   }, []);
-  
+
   return (
     <SafeAreaView style={style.globalView}>
       <NavigationContainer>
         <Stack.Navigator screenOptions={{headerShown: false}}>
           <Stack.Screen name="Home" component={HomeView} />
-          <Stack.Screen name="WebView" component={WebViewScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaView>
