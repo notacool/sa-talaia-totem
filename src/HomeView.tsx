@@ -2166,7 +2166,7 @@ export function HomeView(): JSX.Element {
                 borderRadius: 100,
                 height: screenHeight * 0.055,
               }}
-              onPress={() => setStep(0)}>
+              onPress={() => setStep(0)} disabled={isCounting}>
               <Back
                 height={screenHeight * 0.055}
                 width={screenWidth * 0.1}
@@ -2747,12 +2747,16 @@ export function HomeView(): JSX.Element {
                 </TouchableOpacity>
               </View>
             )}
-            <WebView
-              source={{uri: data?.web ? data.web : ''}}
-              onLoadStart={() => setLoading(true)} // Show loader when WebView starts loading
-              onLoad={() => setLoading(false)} // Hide loader when WebView finishes loading
-              style={{flex: 1, backgroundColor: '#C7EEFF'}}
-            />
+            <View style={{flex: 1}}>
+              <WebView
+                source={{uri: data?.web ? data.web : ''}}
+                onLoadStart={() => setLoading(true)} // Show loader when WebView starts loading
+                onLoad={() => setLoading(false)} // Hide loader when WebView finishes loading
+                style={{flex: 1, backgroundColor: '#C7EEFF'}}
+                scrollEnabled={true}
+                nestedScrollEnabled={true}
+              />
+            </View>
           </View>
         </TouchableWithoutFeedback>
       )}
