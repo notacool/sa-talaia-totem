@@ -54,6 +54,7 @@ jobs:
     - name: Build APK
       run: |
         cd android
+        chmod +x ./gradlew
         if [ "${{ github.event.inputs.build_variant }}" = "release" ]; then
           ./gradlew assembleRelease --no-daemon
         else
@@ -73,5 +74,5 @@ jobs:
         echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "- **Build Type:** ${{ github.event.inputs.build_variant || 'debug' }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
         echo "- **APK Generated:** ✅" >> $GITHUB_STEP_SUMMARY
