@@ -121,33 +121,37 @@ jobs:
         
     - name: Create Release
       if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      id: create_release
+      uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
         draft: false
         prerelease: false
-        
-    - name: Upload Release Assets
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-      uses: actions/upload-release-asset@v1
+        files: |
+          android/app/build/outputs/apk/release/app-release.apk
+          android/app/build/outputs/bundle/release/app-release.aab
+        body: |
+          ## 🚀 Release ${{ github.ref_name }}
+          
+          ### 📱 APKs Generados
+          - **APK Release**: `SaTalaiaTotem-${{ github.ref_name }}.apk`
+          - **Bundle AAB**: `app-release.aab` (para Google Play Store)
+          
+          ### 🔧 Cambios Incluidos
+          - GitHub Actions workflows para CI/CD automático
+          - README completo con documentación
+          - Scripts de monitoreo de workflows
+          
+          ### 📥 Descarga
+          Los archivos están adjuntos a este release.
+          
+          ### 🎯 Uso
+          - **APK**: Para distribución directa
+          - **AAB**: Para subir a Google Play Store
+          
+          ---
+          
+          *Generado automáticamente por GitHub Actions*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: android/app/build/outputs/apk/release/app-release.apk
-        asset_name: SaTalaiaTotem-${{ github.ref_name }}.apk
-        asset_content_type: application/vnd.android.package-archive
-        
-    - name: Upload Release Bundle Assets
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: android/app/build/outputs/bundle/release/app-release.aab
-        asset_name: SaTalaiaTotem-${{ github.ref_name }}.aab
-        asset_content_type: application/octet-stream
