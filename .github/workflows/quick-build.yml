@@ -1,0 +1,77 @@
+name: Quick Android Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: 'Variante de build'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+        - debug
+        - release
+  push:
+    branches: [ develop ]
+    paths:
+      - 'src/**'
+      - 'android/**'
+      - 'package.json'
+      - 'package-lock.json'
+
+jobs:
+  quick-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Java & Node
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Setup Android
+      uses: android-actions/setup-android@v2
+      
+    - name: Accept licenses
+      run: |
+        yes | sdkmanager --licenses
+        yes | sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+        
+    - name: Build APK
+      run: |
+        cd android
+        if [ "${{ github.event.inputs.build_variant }}" = "release" ]; then
+          ./gradlew assembleRelease --no-daemon
+        else
+          ./gradlew assembleDebug --no-daemon
+        fi
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-${{ github.event.inputs.build_variant || 'debug' }}
+        path: |
+          android/app/build/outputs/apk/*/app-*.apk
+        retention-days: 7
+        
+    - name: Build Summary
+      run: |
+        echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Type:** ${{ github.event.inputs.build_variant || 'debug' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **APK Generated:** ✅" >> $GITHUB_STEP_SUMMARY

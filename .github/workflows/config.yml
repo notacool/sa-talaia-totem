@@ -1,0 +1,47 @@
+# Configuración centralizada para workflows de Android
+# Este archivo define las versiones y configuraciones comunes
+
+# Versiones de las herramientas
+versions:
+  java: '17'
+  node: '18'
+  android:
+    compileSdk: '33'
+    buildTools: '33.0.0'
+    targetSdk: '33'
+    minSdk: '21'
+
+# Configuración de Gradle
+gradle:
+  daemon: false
+  parallel: true
+  maxWorkers: 2
+
+# Configuración de cache
+cache:
+  gradle: true
+  npm: true
+  android_sdk: true
+  retention_days: 30
+
+# Configuración de builds
+builds:
+  debug:
+    enabled: true
+    upload_artifacts: true
+  release:
+    enabled: true
+    upload_artifacts: true
+    create_release: true
+  bundle:
+    enabled: true
+    upload_artifacts: true
+    create_release: true
+
+# Configuración de releases
+releases:
+  auto_create: true
+  draft: false
+  prerelease: false
+  include_apk: true
+  include_bundle: true

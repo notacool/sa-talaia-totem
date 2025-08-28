@@ -1,0 +1,150 @@
+name: Code Quality & Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 2 * * 1'  # Lunes a las 2 AM
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run ESLint
+      run: npm run lint
+      
+    - name: Run Prettier check
+      run: npx prettier --check .
+      
+    - name: Run TypeScript check
+      run: npx tsc --noEmit
+      
+    - name: Run tests
+      run: npm test -- --coverage --watchAll=false
+      
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+        
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run npm audit
+      run: npm audit --audit-level moderate
+      
+    - name: Run Snyk security scan
+      uses: snyk/actions/node@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high
+        
+  dependency-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Check for outdated dependencies
+      run: |
+        echo "Checking for outdated packages..."
+        npm outdated || true
+        
+    - name: Check for unused dependencies
+      run: |
+        echo "Checking for unused dependencies..."
+        npx depcheck || true
+        
+    - name: Generate dependency report
+      run: |
+        echo "## Dependencies Report" >> $GITHUB_STEP_SUMMARY
+        echo "### Package.json Dependencies:" >> $GITHUB_STEP_SUMMARY
+        npm list --depth=0 >> $GITHUB_STEP_SUMMARY
+        
+  android-specific-checks:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Check Android configuration
+      run: |
+        echo "Checking Android configuration..."
+        if [ -f "android/app/build.gradle" ]; then
+          echo "✅ build.gradle found"
+          grep -E "(compileSdk|targetSdk|minSdk)" android/app/build.gradle || echo "⚠️ SDK versions not found"
+        else
+          echo "❌ build.gradle not found"
+        fi
+        
+        if [ -f "android/app/src/main/AndroidManifest.xml" ]; then
+          echo "✅ AndroidManifest.xml found"
+        else
+          echo "❌ AndroidManifest.xml not found"
+        fi
+        
+    - name: Validate Gradle wrapper
+      run: |
+        cd android
+        ./gradlew --version
+        
+    - name: Check for keystore files
+      run: |
+        echo "Checking keystore files..."
+        if [ -f "android/app/debug.keystore" ]; then
+          echo "✅ debug.keystore found"
+        else
+          echo "⚠️ debug.keystore not found"
+        fi
+        
+        if [ -f "android/app/my-release-key.jks" ]; then
+          echo "✅ release keystore found"
+        else
+          echo "ℹ️ release keystore not found (optional for development)"
+        fi
