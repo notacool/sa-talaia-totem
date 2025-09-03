@@ -51,22 +51,27 @@ jobs:
         yes | sdkmanager --licenses
         yes | sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
         
-    - name: Build APK
+    - name: Build Debug APK
       run: |
         cd android
         chmod +x ./gradlew
-        if [ "${{ github.event.inputs.build_variant }}" = "release" ]; then
-          ./gradlew assembleRelease --no-daemon
-        else
-          ./gradlew assembleDebug --no-daemon
-        fi
-        
-    - name: Upload APK
+        ./gradlew assembleDebug --no-daemon
+    - name: Build Release APK
+      run: |
+        cd android
+        chmod +x ./gradlew
+        ./gradlew assembleRelease --no-daemon
+    - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-${{ github.event.inputs.build_variant || 'debug' }}
-        path: |
-          android/app/build/outputs/apk/*/app-*.apk
+        name: app-debug
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 7
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release
+        path: android/app/build/outputs/apk/release/app-release.apk
         retention-days: 7
         
     - name: Build Summary
