@@ -2058,7 +2058,7 @@ export function HomeView(): JSX.Element {
                             fontFamily: 'Poppins-Bold',
                             lineHeight: screenHeight * 0.02,
                           }}>
-                          Visita la web turística de Xxxxx Xxxx
+                          Visita la web turística
                         </Text>
                         <TouchableOpacity
                           style={{
