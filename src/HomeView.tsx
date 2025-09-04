@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Alert,
 } from 'react-native';
 import Header from '../assets/images/bg.png';
 import Logo from '../assets/images/logo.svg';
@@ -2032,7 +2033,19 @@ export function HomeView(): JSX.Element {
                             height: '85%',
                           }}
                           resizeMode="stretch">
-                          <TouchableOpacity onPress={() => setStep(1)}>
+                          <TouchableOpacity
+                            onPress={async () => {
+                              try {
+                                  setStep(1);
+                              } catch (e) {
+                                Alert.alert(
+                                  'Error',
+                                  'No se pudo acceder a la cámara.\n' +
+                                    (e instanceof Error ? e.message : '')
+                                );
+                              }
+                            }}
+                          >
                             <TakeSelfie
                               width0="85%"
                               height="85%"
