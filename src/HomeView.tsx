@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Alert,
 } from 'react-native';
 import Header from '../assets/images/bg.png';
 import Logo from '../assets/images/logo.svg';
@@ -2032,7 +2033,30 @@ export function HomeView(): JSX.Element {
                             height: '85%',
                           }}
                           resizeMode="stretch">
-                          <TouchableOpacity onPress={() => setStep(1)}>
+                          <TouchableOpacity
+                            onPress={async () => {
+                              try {
+                                const status = await Camera.getCameraPermissionStatus();
+                                let finalStatus = status;
+                                if (status !== 'authorized') {
+                                  finalStatus = await Camera.requestCameraPermission();
+                                }
+                                if (finalStatus === 'authorized') {
+                                  setStep(1);
+                                } else {
+                                  Alert.alert(
+                                    'Permiso de cámara requerido',
+                                    'No se ha concedido el permiso de cámara. Por favor, actívalo en los ajustes para poder tomar una foto.'
+                                  );
+                                }
+                              } catch (e) {
+                                Alert.alert(
+                                  'Error',
+                                  'Error al solicitar el permiso de cámara.'
+                                );
+                              }
+                            }}
+                          >
                             <TakeSelfie
                               width0="85%"
                               height="85%"
