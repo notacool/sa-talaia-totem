@@ -4,56 +4,90 @@ import {
   Button,
   Dimensions,
   Image,
-      case 'en':
-        switch (month) {
-          case 0: return 'January';
-          case 1: return 'February';
-          case 2: return 'March';
-          case 3: return 'April';
-          case 4: return 'May';
-          case 5: return 'June';
-          case 6: return 'July';
-          case 7: return 'August';
-          case 8: return 'September';
-          case 9: return 'October';
-          case 10: return 'November';
-          case 11: return 'December';
-          default: return '';
-        }
-      case 'es':
-        switch (month) {
-          case 0: return 'Enero';
-          case 1: return 'Febrero';
-          case 2: return 'Marzo';
-          case 3: return 'Abril';
-          case 4: return 'Mayo';
-          case 5: return 'Junio';
-          case 6: return 'Julio';
-          case 7: return 'Agosto';
-          case 8: return 'Septiembre';
-          case 9: return 'Octubre';
-          case 10: return 'Noviembre';
-          case 11: return 'Diciembre';
-          default: return '';
-        }
-      case 'va':
-        switch (month) {
-          case 0: return 'Gener';
-          case 1: return 'Febrer';
-          case 2: return 'Març';
-          case 3: return 'Abril';
-          case 4: return 'Maig';
-          case 5: return 'Juny';
-          case 6: return 'Juliol';
-          case 7: return 'Agost';
-          case 8: return 'Setembre';
-          case 9: return 'Octubre';
-          case 10: return 'Novembre';
-          case 11: return 'Desembre';
-          default: return '';
-        }
-      default:
-        return '';
+  ImageBackground,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native';
+import Header from '../assets/images/bg.png';
+import Logo from '../assets/images/logo.svg';
+import Indicator from '../assets/images/iconIndicator.svg';
+import Info from '../assets/images/iconInfo.svg';
+import Selfie from '../assets/images/iconSelfie.svg';
+import LinearGradient from 'react-native-linear-gradient';
+import Body from '../assets/images/body.png';
+import Touch from '../assets/images/iconTouch.svg';
+import Header2 from '../assets/images/bg-body-1.png';
+import Body1 from '../assets/images/bg-body-2.png';
+import Body2 from '../assets/images/bg-body-3.png';
+import Location from '../assets/images/iconLocation.svg';
+import Temperature from '../assets/images/iconTemperature.svg';
+import TemperatureCold from '../assets/images/iconTemperatureCold.svg';
+import TemperatureHot from '../assets/images/iconTemperatureHot.svg';
+import CO2 from '../assets/images/iconCo2.svg';
+import CO2Bad from '../assets/images/iconCo2Bad.svg';
+import CO2Regular from '../assets/images/iconCo2Regular.svg';
+import RectangleSelfie from '../assets/images/iconRectangleSelfie.png';
+import TakeSelfie from '../assets/images/iconTakeSelfie.svg';
+import Next from '../assets/images/iconNext.svg';
+import UE from '../assets/images/UE.svg';
+import Mapa from '../assets/images/map.png';
+import Plan from '../assets/images/plan.svg';
+import Ministerio from '../assets/images/ministerio.svg';
+import Minilogo from '../assets/images/miniLogo.svg';
+import Back from '../assets/images/iconBack.svg';
+import Photo from '../assets/images/iconPhoto.svg';
+import Close from '../assets/images/iconClose.svg';
+import Check from '../assets/images/iconCheck.svg';
+import Popup from '../assets/images/popup.png';
+import Sent from '../assets/images/sent.svg';
+import Home from '../assets/images/iconHome.svg';
+import {launchCamera} from 'react-native-image-picker';
+import {
+  ODOO_URL,
+  ODOO_DB,
+  ODOO_USERNAME,
+  ODOO_PASSWORD,
+  TOTEM_ID_LAST_DIGITS,
+} from '@env';
+import {Totem} from '../types/entities';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
+import {StackNavigationProp} from '@react-navigation/stack';
+import {RootStackParamList} from '../types/navProps';
+import Paho from 'paho-mqtt';
+import {
+  Camera,
+  CameraPermissionStatus,
+  useCameraDevices,
+} from 'react-native-vision-camera';
+import RNFS from 'react-native-fs';
+import WebView from 'react-native-webview';
+
+const screenWidth = Dimensions.get('window').width;
+const screenHeight = Dimensions.get('window').height;
+
+type Data = {
+  n: string;
+  u: string;
+  v: number;
+};
+
+type LanguageType = 'es' | 'va' | 'en';
+export function HomeView(): JSX.Element {
+  const [image, setImage] = useState<string | undefined>();
+  const [image64, setImage64] = useState<string | undefined>();
+  const [step, setStep] = useState(0);
+  const [accepted, setAccepted] = useState(false);
+  const [readPrivacy, setReadPrivacy] = useState(false);
+  const [privacyLang, setPrivacyLang] = useState<LanguageType>('es');
   const [focused, setFocused] = useState(false);
   const [email, setEmail] = useState('');
   const [data, setData] = useState<Totem | undefined>();
@@ -68,30 +102,6 @@ import {
   const [countdown, setCountdown] = useState(0);
   const [isCounting, setIsCounting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [cameraPermission, setCameraPermission] = useState<CameraPermissionStatus | null>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const status = await Camera.getCameraPermissionStatus();
-        if (status !== 'authorized') {
-          const newStatus = await Camera.requestCameraPermission();
-          setCameraPermission(newStatus);
-          if (newStatus !== 'authorized') {
-            setCameraError('No se ha concedido el permiso de cámara. Por favor, actívalo en los ajustes para poder tomar una foto.');
-          } else {
-            setCameraError(null);
-          }
-        } else {
-          setCameraPermission(status);
-          setCameraError(null);
-        }
-      } catch (e) {
-        setCameraError('Error al solicitar el permiso de cámara.');
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     console.log('Dispositivos disponibles:', devices);
@@ -106,76 +116,65 @@ import {
       [15.5, 30.4, 300],
       [30.5, 40.4, 400],
       [40.5, 50.4, 500],
-      {step == 1 ? (
-        <View
-          style={{
-            backgroundColor: '#C7EEFF',
-            height: screenHeight * 0.9,
-            paddingVertical: screenHeight * 0.02,
-            alignItems: 'center',
-            gap: screenHeight * 0.015,
-          }}>
-          {cameraError ? (
-            <View style={{ justifyContent: 'center', alignItems: 'center', height: screenHeight * 0.75 }}>
-              <Text style={{ color: 'red', fontSize: screenWidth * 0.025, textAlign: 'center', marginBottom: 20 }}>{cameraError}</Text>
-              <TouchableOpacity onPress={() => setStep(0)} style={{ marginTop: 20, backgroundColor: '#006EA0', borderRadius: 10, padding: 16 }}>
-                <Text style={{ color: 'white', fontSize: screenWidth * 0.02 }}>Volver</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <Camera
-                ref={cameraRef}
-                style={{
-                  width: screenWidth,
-                  height: screenHeight * 0.75,
-                }}
-                device={device}
-                isActive={true}
-                photo={true}
-              />
-              <View
-                style={{
-                  width: '100%',
-                  alignItems: 'center',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  justifyContent: 'center',
-                  gap: screenWidth * 0.05,
-                }}>
-                <TouchableOpacity
-                  style={{
-                    alignSelf: 'center',
-                    borderRadius: 100,
-                    height: screenHeight * 0.055,
-                  }}
-                  onPress={() => setStep(0)} disabled={isCounting}>
-                  <Back
-                    height={screenHeight * 0.055}
-                    width={screenWidth * 0.1}
-                    style={{ height: screenWidth * 0.02 }}></Back>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleTakePhoto} disabled={isCounting}>
-                  <Photo
-                    height={screenHeight * 0.055}
-                    width={screenWidth * 0.4}></Photo>
-                </TouchableOpacity>
-                {isCounting && (
-                  <Text
-                    style={{
-                      marginTop: screenHeight * 0.01,
-                      fontSize: screenWidth * 0.05,
-                      color: '#006EA0',
-                      fontFamily: 'Poppins-Bold',
-                    }}>
-                    {countdown}
-                  </Text>
-                )}
-              </View>
-            </>
-          )}
-        </View>
-      ) : step == 2 ? (
+    ],
+    SO2: [
+      [0, 35, 50],
+      [36, 75, 100],
+      [76, 185, 150],
+      [186, 304, 200],
+      [305, 604, 300],
+      [605, 804, 400],
+      [805, 1004, 500],
+    ],
+    NO2: [
+      [0, 53, 50],
+      [54, 100, 100],
+      [101, 360, 150],
+      [361, 649, 200],
+      [650, 1249, 300],
+      [1250, 1649, 400],
+      [1650, 2049, 500],
+    ],
+    O3: [
+      [0, 54, 50],
+      [55, 70, 100],
+      [71, 85, 150],
+      [86, 105, 200],
+      [106, 200, 300],
+      [201, 300, 400],
+      [301, 400, 500],
+    ],
+  };
+
+  const qualityLevels = [
+    [0, 50, 'Buena'],
+    [51, 100, 'Moderada'],
+    [101, 150, 'No saludable para grupos sensibles'],
+    [151, 200, 'No saludable'],
+    [201, 300, 'Muy no saludable'],
+    [301, Infinity, 'Peligroso'],
+  ];
+
+  function calculateICA(value: number | undefined, pollutant: any) {
+    if (value && value > 0) {
+      for (let [low, high, icaHigh] of limits[pollutant]) {
+        if (value >= low && value <= high) {
+          let icaLow =
+            low === 0 ? 0 : limits[pollutant].find(([l]) => l === low)[2];
+          return icaLow + ((icaHigh - icaLow) * (value - low)) / (high - low);
+        }
+      }
+      // Si está fuera del rango
+      return null;
+    } else {
+      return 0;
+    }
+  }
+
+  const getAirQuality = () => {
+    if (messages) {
+      const co =
+        messages.find(val => val.n === 'co') &&
         (
           Math.round(messages.find(val => val.n === 'co')?.v * 100) / 100
         ).toFixed(2);
@@ -200,45 +199,58 @@ import {
           100 /
           1000
         ).toFixed(2);
-      const getAirQuality = () => {
-        if (messages) {
-          const co = messages.find(val => val.n === 'co')
-            ? (Math.round((messages.find(val => val.n === 'co')?.v ?? 0) * 100) / 100)
-            : 0;
-          const so2 = messages.find(val => val.n === 'so2')
-            ? (Math.round((messages.find(val => val.n === 'so2')?.v ?? 0) * 100) / 100 / 1000)
-            : 0;
-          const o3 = messages.find(val => val.n === 'o3')
-            ? (Math.round((messages.find(val => val.n === 'o3')?.v ?? 0) * 100) / 100 / 1000)
-            : 0;
-          const no2 = messages.find(val => val.n === 'no2')
-            ? (Math.round((messages.find(val => val.n === 'no2')?.v ?? 0) * 100) / 100 / 1000)
-            : 0;
-          const vals = {
-            CO: co < 0 ? 0 : co, // ppm
-            SO2: so2 < 0 ? 0 : so2, // ppb
-            NO2: no2 < 0 ? 0 : no2, // ppb
-            O3: o3 < 0 ? 0 : o3, //ppb
-          };
-          const icaValues = Object.fromEntries(
-            Object.entries(vals).map(([key, val]) => [key, calculateICA(val, key)])
-          );
-          const icaFinal = Math.max(
-            ...Object.values(icaValues).filter(v => v !== null)
-          );
-          setAirQualityValue(
-            Number(
-              Object.values(vals)
-                .reduce((sum, val) => sum + (typeof val === 'number' ? val : 0), 0)
-                .toFixed(2)
-            )
-          );
-          const foundLevel = qualityLevels.find(
-            (level) => icaFinal >= level[0] && icaFinal <= level[1]
-          );
-          setAirQuality(foundLevel ? (foundLevel[2] as string) : undefined);
-        }
+      const vals = {
+        CO: Number(co) < 0 ? 0 : Number(co), // ppm
+        SO2: Number(so2) < 0 ? 0 : Number(so2), // ppb
+        NO2: Number(no2) < 0 ? 0 : Number(no2), // ppb
+        O3: Number(o3) < 0 ? 0 : Number(o3), //ppb
       };
+      const icaValues = Object.fromEntries(
+        Object.entries(vals).map(([key, val]) => [key, calculateICA(val, key)]),
+      );
+      const icaFinal = Math.max(
+        ...Object.values(icaValues).filter(v => v !== null),
+      );
+      setAirQualityValue(
+        Object.values(vals)
+          .reduce((sum, val) => sum + val, 0)
+          .toFixed(2),
+      );
+      setAirQuality(
+        qualityLevels.find(
+          ([low, high]) => icaFinal >= low && icaFinal <= high,
+        )[2],
+      );
+    }
+  };
+
+  const getMonth = (month: number, language: LanguageType) => {
+    switch (language) {
+      case 'en':
+        switch (month) {
+          case 0:
+            return 'January';
+          case 1:
+            return 'February';
+          case 2:
+            return 'March';
+          case 3:
+            return 'April';
+          case 4:
+            return 'May';
+          case 5:
+            return 'June';
+          case 6:
+            return 'July';
+          case 7:
+            return 'August';
+          case 8:
+            return 'September';
+          case 9:
+            return 'October';
+          case 10:
+            return 'November';
+          case 11:
             return 'December';
         }
         break;
@@ -305,39 +317,58 @@ import {
     switch (language) {
       case 'en':
         switch (day) {
-          case 1: return 'Monday';
-          case 2: return 'Tuesday';
-          case 3: return 'Wednesday';
-          case 4: return 'Thursday';
-          case 5: return 'Friday';
-          case 6: return 'Saturday';
-          case 0: return 'Sunday';
-          default: return '';
+          case 1:
+            return 'Monday';
+          case 2:
+            return 'Tuesday';
+          case 3:
+            return 'Wednesday';
+          case 4:
+            return 'Thursday';
+          case 5:
+            return 'Friday';
+          case 6:
+            return 'Saturday';
+          case 7:
+            return 'Sunday';
         }
+        break;
       case 'es':
         switch (day) {
-          case 1: return 'Lunes';
-          case 2: return 'Martes';
-          case 3: return 'Miércoles';
-          case 4: return 'Jueves';
-          case 5: return 'Viernes';
-          case 6: return 'Sábado';
-          case 0: return 'Domingo';
-          default: return '';
+          case 1:
+            return 'Lunes';
+          case 2:
+            return 'Martes';
+          case 3:
+            return 'Miércoles';
+          case 4:
+            return 'Jueves';
+          case 5:
+            return 'Viernes';
+          case 6:
+            return 'Sábado';
+          case 7:
+            return 'Domingo';
         }
+        break;
       case 'va':
         switch (day) {
-          case 1: return 'Dilluns';
-          case 2: return 'Dimarts';
-          case 3: return 'Dimecres';
-          case 4: return 'Dijous';
-          case 5: return 'Divendres';
-          case 6: return 'Dissabte';
-          case 0: return 'Diumenge';
-          default: return '';
+          case 1:
+            return 'Dilluns';
+          case 2:
+            return 'Dimarts';
+          case 3:
+            return 'Dimecres';
+          case 4:
+            return 'Dijous';
+          case 5:
+            return 'Divendres';
+          case 6:
+            return 'Dissabte';
+          case 7:
+            return 'Diumenge';
         }
-      default:
-        return '';
+        break;
     }
   };
 
@@ -2941,3 +2972,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#C7EEFF',
   },
 });
+
+export default HomeView;
