@@ -2036,23 +2036,12 @@ export function HomeView(): JSX.Element {
                           <TouchableOpacity
                             onPress={async () => {
                               try {
-                                const status = await Camera.getCameraPermissionStatus();
-                                let finalStatus = status;
-                                if (status !== 'authorized') {
-                                  finalStatus = await Camera.requestCameraPermission();
-                                }
-                                if (finalStatus === 'authorized') {
                                   setStep(1);
-                                } else {
-                                  Alert.alert(
-                                    'Permiso de cámara requerido',
-                                    'No se ha concedido el permiso de cámara. Por favor, actívalo en los ajustes para poder tomar una foto.'
-                                  );
-                                }
                               } catch (e) {
                                 Alert.alert(
                                   'Error',
-                                  'Error al solicitar el permiso de cámara.'
+                                  'No se pudo acceder a la cámara.\n' +
+                                    (e instanceof Error ? e.message : '')
                                 );
                               }
                             }}
