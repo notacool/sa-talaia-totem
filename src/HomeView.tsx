@@ -622,7 +622,7 @@ export function HomeView(): JSX.Element {
 
   const getMQTTData = async () => {
     const client = new Paho.Client(
-      'mqtt-broker.notacoolcompany.com',
+      '217.154.10.94',
       9001,
       'react-native-client',
     );
