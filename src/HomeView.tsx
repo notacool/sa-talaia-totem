@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Alert,
 } from 'react-native';
 import Header from '../assets/images/bg.png';
 import Logo from '../assets/images/logo.svg';
@@ -37,6 +38,7 @@ import CO2Bad from '../assets/images/iconCo2Bad.svg';
 import CO2Regular from '../assets/images/iconCo2Regular.svg';
 import RectangleSelfie from '../assets/images/iconRectangleSelfie.png';
 import TakeSelfie from '../assets/images/iconTakeSelfie.svg';
+import WebButton from '../assets/images/iconWeb.svg';
 import Next from '../assets/images/iconNext.svg';
 import UE from '../assets/images/UE.svg';
 import Mapa from '../assets/images/map.png';
@@ -782,30 +784,7 @@ export function HomeView(): JSX.Element {
                       Information point.
                     </Text>
                   </View>
-                </View>
-                <View
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: screenWidth * 0.005,
-                  }}>
-                  <Selfie
-                    height="100%"
-                    width="7%"
-                    // preserveAspectRatio="none"
-                    style={{
-                      flexShrink: 1,
-                      minWidth: screenWidth * 0.018,
-                    }}></Selfie>
-                  <Text
-                    style={{
-                      fontSize: screenWidth * 0.014,
-                      fontFamily: 'Poppins-Regular',
-                    }}>
-                    Selfie
-                  </Text>
-                </View>
+                </View>              
               </View>
             </View>
           </View>
@@ -1377,16 +1356,6 @@ export function HomeView(): JSX.Element {
                             </View>
                           </View>
                         </View>
-                        <ImageBackground
-                          source={Mapa}
-                          style={{
-                            height: '50%',
-                            width: '90%',
-                            marginTop: '25%',
-                            marginLeft: '12.5%',
-                          }}
-                          resizeMode="stretch"
-                        />
                       </View>
                       <View style={styles.card}>
                         <View
@@ -1968,14 +1937,13 @@ export function HomeView(): JSX.Element {
                             lineHeight: screenHeight * 0.015,
                             textAlign: 'center',
                           }}>
-                          HÁZTE UN SELFIE
+                            VISITA LA WEB TURÍSTICA
                         </Text>
                       </View>
                       <View
                         style={{
                           alignItems: 'center',
                           justifyContent: 'center',
-
                           display: 'flex',
                           flexDirection: 'row',
                           width: '40%',
@@ -1995,23 +1963,13 @@ export function HomeView(): JSX.Element {
                           }}>
                           <Text
                             style={{
-                              ...styles.infoSubtitleRed,
-                              fontSize: screenWidth * 0.0125,
-                              fontFamily: 'Poppins-Medium',
-                              textAlign: 'center',
-                              paddingVertical: screenHeight * 0.003,
-                            }}>
-                            Fer-se una selfie
-                          </Text>
-                          <Text
-                            style={{
                               ...styles.infoSubtitleYellow,
                               fontSize: screenWidth * 0.0125,
                               fontFamily: 'Poppins-Medium',
                               textAlign: 'center',
                               paddingVertical: screenHeight * 0.003,
                             }}>
-                            Take a selfie
+                            Visit the touristic website
                           </Text>
                         </View>
                       </View>
@@ -2029,67 +1987,46 @@ export function HomeView(): JSX.Element {
                             alignItems: 'center',
                             justifyContent: 'center',
                             width: '85%',
-                            height: '85%',
+                            height: '87%',
+                            flexDirection: 'row',
                           }}
                           resizeMode="stretch">
-                          <TouchableOpacity onPress={() => setStep(1)}>
-                            <TakeSelfie
-                              width0="85%"
-                              height="85%"
+                          <View style={{
+                            flex: 1, 
+                            height: '100%',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}>
+                            <WebButton                              
+                              width="50%"
+                              height="50%"
                               style={{
                                 marginBottom: screenHeight * 0.015,
-                                marginRight: screenWidth * 0.09,
-                              }}></TakeSelfie>
-                          </TouchableOpacity>
-                        </ImageBackground>
-                      </View>
-                      <View
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginTop: screenHeight * 0.001,
-                          gap: screenWidth * 0.02,
-                        }}>
-                        <Text
-                          style={{
-                            fontSize: screenWidth * 0.015,
-                            fontFamily: 'Poppins-Bold',
-                            lineHeight: screenHeight * 0.02,
-                          }}>
-                          Visita la web turística
-                        </Text>
-                        <TouchableOpacity
-                          style={{
-                            backgroundColor: '#006EA0',
-                            borderRadius: 50,
-                            paddingVertical: screenHeight * 0.0005,
-                            paddingHorizontal: screenWidth * 0.03,
-                            display: 'flex',
-                            width: screenWidth * 0.15,
-                            flexDirection: 'row',
+                                marginLeft: "3%",
+                              }}
+                              onPress={() => {
+                                setStep(4);
+                                setLoading(true);
+                              }}
+                            />
+                          </View>
+                          <View style={{
+                            flex: 2, 
+                            height: '100%',
+                            alignItems: 'flex-start',
                             justifyContent: 'center',
-                            alignItems: 'center',
-                            gap: screenWidth * 0.01,
-                          }}
-                          onPress={() => {
-                            setStep(4);
-                            setLoading(true);
+                            marginTop: '1%',
                           }}>
-                          <Text
-                            style={{
-                              color: 'white',
-                              fontSize: screenWidth * 0.015,
-                              fontFamily: 'Poppins-Bold',
-                              lineHeight: screenHeight * 0.02,
-                            }}>
-                            Website
-                          </Text>
-                          <Next
-                            height={screenHeight * 0.02}
-                            width={screenWidth * 0.02}></Next>
-                        </TouchableOpacity>
+                            <ImageBackground
+                              source={Mapa}
+                              style={{
+                                width: '80%',
+                                height: '80%',
+                              }}
+                              resizeMode="stretch"
+                            />  
+                          </View>  
+                        </ImageBackground>
                       </View>
                     </View>
                   </View>
@@ -2914,7 +2851,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     paddingTop: screenHeight * 0.005,
     width: '94%',
-    height: '30%',
+    height: '37%',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'white',
